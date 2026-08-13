@@ -1,0 +1,15 @@
+{
+  "RemoveLinkJellyfinFix": {
+    "name": "清理媒体文件（Jellyfin修复版）",
+    "description": "基于清理媒体文件 v2.16，修复 Jellyfin 删除整个媒体目录时仅产生目录删除事件导致硬链接未同步清理的问题。",
+    "labels": "文件整理,媒体库,Jellyfin,硬链接",
+    "version": "2.16.1",
+    "author": "Jellyfin Fix Community",
+    "level": 1,
+    "v2": true,
+    "history": {
+      "v2.16.1": "修复 Jellyfin 删除整个媒体目录时仅产生目录删除事件，按 file_state 中的文件记录继续执行原有延迟删除和硬链接清理流程。",
+      "v2.16": "基于 DzAvril 清理媒体文件 v2.16。"
+    }
+  }
+}
