@@ -11,5 +11,18 @@
       "v2.16.1": "修复 Jellyfin 删除整个媒体目录时仅产生目录删除事件，按 file_state 中的文件记录继续执行原有延迟删除和硬链接清理流程。",
       "v2.16": "基于 DzAvril 清理媒体文件 v2.16。"
     }
+  },
+  "Limit": {
+    "name": "自动限速（KB单位修复版）",
+    "description": "给 qBittorrent / Transmission 的种子按标签限速。修复原版 qB 限速单位被当作字节/秒（差 1024 倍）的 bug，现 qB 与 TR 统一以 KB/秒为单位。",
+    "labels": "下载器,限速,qBittorrent,Transmission,PT",
+    "version": "1.1.6",
+    "author": "ClarkChen（KB单位修复 by BigRiceFrog）",
+    "level": 1,
+    "v2": true,
+    "history": {
+      "v1.1.6": "修复 qB 限速单位 bug：原版 qB 直接调用原始 API（字节/秒）导致限速差 1024 倍；改为统一走 change_torrent 封装，qB 与 TR 均按 KB/秒。",
+      "v1.1.5": "原版 by ClarkChen。"
+    }
   }
 }
