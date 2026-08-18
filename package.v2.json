@@ -24,5 +24,17 @@
       "v1.1.6": "修复 qB 限速单位 bug：原版 qB 直接调用原始 API（字节/秒）导致限速差 1024 倍；改为统一走 change_torrent 封装，qB 与 TR 均按 KB/秒。",
       "v1.1.5": "原版 by ClarkChen。"
     }
+  },
+  "DownloaderTraffic": {
+    "name": "下载器流量统计",
+    "description": "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点。Vue 图表化详情页。",
+    "labels": "下载器,流量统计,qBittorrent,Transmission,PT",
+    "version": "1.0.0",
+    "author": "BigRiceFrog",
+    "level": 1,
+    "v2": true,
+    "history": {
+      "v1.0.0": "初始版本：定时采集 QB/TR 上传下载流量，按年/月/日聚合，按 PT 站点细分，Vue 图表化详情页（柱状图按站、折线图趋势）。"
+    }
   }
 }
