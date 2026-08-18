@@ -93,7 +93,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.0.3"
+    plugin_version = "1.0.4"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -174,49 +174,82 @@ class DownloaderTraffic(_PluginBase):
             "component": "VForm",
             "content": [
                 {
-                    "component": "VSwitch",
-                    "props": {"model": "enabled", "label": "启用插件"}
+                    "component": "VRow",
+                    "content": [
+                        {
+                            "component": "VCol",
+                            "props": {"cols": 12, "md": 6},
+                            "content": [{
+                                "component": "VSwitch",
+                                "props": {"model": "enabled", "label": "启用插件"}
+                            }]
+                        },
+                        {
+                            "component": "VCol",
+                            "props": {"cols": 12, "md": 6},
+                            "content": [{
+                                "component": "VTextField",
+                                "props": {
+                                    "model": "cron",
+                                    "label": "采集周期 (Cron)",
+                                    "placeholder": "*/30 * * * *",
+                                    "hint": "默认每 30 分钟采集一次"
+                                }
+                            }]
+                        }
+                    ]
                 },
                 {
-                    "component": "VTextField",
-                    "props": {
-                        "model": "cron",
-                        "label": "采集周期 (Cron 表达式)",
-                        "placeholder": "*/30 * * * *",
-                        "hint": "默认每 30 分钟采集一次，建议不要太密集"
-                    }
+                    "component": "VRow",
+                    "content": [{
+                        "component": "VCol",
+                        "props": {"cols": 12},
+                        "content": [{
+                            "component": "VSelect",
+                            "props": {
+                                "multiple": True,
+                                "chips": True,
+                                "clearable": True,
+                                "model": "downloaders",
+                                "label": "指定下载器（留空=全部）",
+                                "items": downloader_items,
+                                "hint": "从 MP 已配置的下载器中选择；留空则统计全部"
+                            }
+                        }]
+                    }]
                 },
                 {
-                    "component": "VSelect",
-                    "props": {
-                        "multiple": True,
-                        "chips": True,
-                        "clearable": True,
-                        "model": "downloaders",
-                        "label": "指定下载器（留空=全部）",
-                        "items": downloader_items,
-                        "hint": "从 MP 已配置的下载器中选择；留空则统计全部"
-                    }
-                },
-                {
-                    "component": "VTextField",
-                    "props": {
-                        "model": "upload_threshold_gb",
-                        "label": "月度上传阈值 (GB)",
-                        "type": "number",
-                        "placeholder": "0",
-                        "hint": "当前自然月累计上传达到该值后触发全局限速；0=不启用"
-                    }
-                },
-                {
-                    "component": "VTextField",
-                    "props": {
-                        "model": "limit_speed_kb",
-                        "label": "超限后全局上传限速 (KB/s)",
-                        "type": "number",
-                        "placeholder": "0",
-                        "hint": "0=达到阈值也不限速"
-                    }
+                    "component": "VRow",
+                    "content": [
+                        {
+                            "component": "VCol",
+                            "props": {"cols": 12, "md": 6},
+                            "content": [{
+                                "component": "VTextField",
+                                "props": {
+                                    "model": "upload_threshold_gb",
+                                    "label": "月度上传阈值 (GB)",
+                                    "type": "number",
+                                    "placeholder": "0",
+                                    "hint": "当月上传达到该值后触发限速；0=不启用"
+                                }
+                            }]
+                        },
+                        {
+                            "component": "VCol",
+                            "props": {"cols": 12, "md": 6},
+                            "content": [{
+                                "component": "VTextField",
+                                "props": {
+                                    "model": "limit_speed_kb",
+                                    "label": "超限后全局上传限速 (KB/s)",
+                                    "type": "number",
+                                    "placeholder": "0",
+                                    "hint": "0=达到阈值也不限速"
+                                }
+                            }]
+                        }
+                    ]
                 }
             ]
         }], {
