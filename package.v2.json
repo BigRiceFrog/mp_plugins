@@ -29,7 +29,7 @@
     "name": "下载器流量统计",
     "description": "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点。配置页可从 MP 已配置下载器中选择；支持月度上传阈值超限后自动全局限速。Vue 图表化详情页。",
     "labels": "下载器,流量统计,qBittorrent,Transmission,PT",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "author": "BigRiceFrog",
     "level": 1,
     "v2": true,
@@ -39,7 +39,8 @@
       "v1.0.2": "修复插件加载失败根因：导入路径改为本机 MP 实际存在的 app.plugins / app.core.event / app.schemas.types（原 app.plugin / app.event 在本版本不存在），并保留旧版双路径容错。插件现已能正常出现在「我的插件」。",
       "v1.0.3": "配置页下载器改为从 MP 已配置下载器下拉多选（参考 limit 插件 get_configs）；新增「月度上传阈值(GB)」与「超限后全局上传限速(KB/s)」：当月累计上传达阈值时自动对所选下载器调用 set_speed_limit 全局限速。",
       "v1.0.4": "修复插件代码更新不生效问题：由于 CDN/代理缓存导致 1.0.3 代码未正确下发，本版本强制刷新；配置表单改为 VRow/VCol 网格布局，与 limit 插件风格一致。",
-      "v1.0.5": "详情页配置 tab 的下载器也改为 VSelect 下拉：新增 /downloaders 接口返回 MP 已配置下载器，Vue Config.vue 加载时调用并渲染多选下拉，与设置弹窗体验一致。"
+      "v1.0.5": "详情页配置 tab 的下载器也改为 VSelect 下拉：新增 /downloaders 接口返回 MP 已配置下载器，Vue Config.vue 加载时调用并渲染多选下拉，与设置弹窗体验一致。",
+      "v1.0.6": "修复下载器下拉列表为空：get_form 和 /downloaders API 直接新建 DownloaderHelper() 读取配置，避免 self._downloader_helper 在表单渲染时未初始化导致为空；get_api 增加 auth:bear 字段对齐官方插件。"
     }
   }
 }

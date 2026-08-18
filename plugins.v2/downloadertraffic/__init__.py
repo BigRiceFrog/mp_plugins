@@ -93,7 +93,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.0.5"
+    plugin_version = "1.0.6"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -161,14 +161,18 @@ class DownloaderTraffic(_PluginBase):
         # 从 MP 配置的下载器中读取可选列表（与 limit 插件一致）
         downloader_items = []
         try:
-            helper = self._downloader_helper or (DownloaderHelper() if DownloaderHelper else None)
-            if helper is not None:
-                downloader_items = [
-                    {"title": cfg.name, "value": cfg.name}
-                    for cfg in helper.get_configs().values()
-                ]
+            if DownloaderHelper is None:
+                raise RuntimeError("DownloaderHelper 未导入")
+            # get_form 被调用时实例可能未经过 init_plugin，直接新建 helper 最稳
+            helper = DownloaderHelper()
+            configs = helper.get_configs()
+            downloader_items = [
+                {"title": cfg.name, "value": cfg.name}
+                for cfg in configs.values()
+            ]
+            logger.debug(f"下载器流量统计：读取到 {len(downloader_items)} 个下载器")
         except Exception as e:  # pragma: no cover
-            logger.debug(f"下载器流量统计：读取下载器列表失败 {e}")
+            logger.error(f"下载器流量统计：读取下载器列表失败 {e}")
 
         return [{
             "component": "VForm",
@@ -300,18 +304,21 @@ class DownloaderTraffic(_PluginBase):
             "path": "/records",
             "endpoint": self.api_records,
             "methods": ["GET"],
+            "auth": "bear",
             "summary": "查询流量统计",
             "description": "按 年/月/日 查询上传/下载流量，可按站点、下载器过滤"
         }, {
             "path": "/trend",
             "endpoint": self.api_trend,
             "methods": ["GET"],
+            "auth": "bear",
             "summary": "查询流量时间趋势",
             "description": "按月/年返回逐日或逐月的累计上传/下载趋势，用于绘制折线图"
         }, {
             "path": "/downloaders",
             "endpoint": self.api_downloaders,
             "methods": ["GET"],
+            "auth": "bear",
             "summary": "获取 MP 已配置下载器列表",
             "description": "返回已配置的下载器名称列表，供前端配置页下拉选择"
         }]
@@ -324,14 +331,15 @@ class DownloaderTraffic(_PluginBase):
         """返回 MP 已配置的下载器名称列表，供前端 VSelect 使用。"""
         items = []
         try:
-            helper = self._downloader_helper or (DownloaderHelper() if DownloaderHelper else None)
-            if helper is not None:
-                items = [
-                    {"title": cfg.name, "value": cfg.name}
-                    for cfg in helper.get_configs().values()
-                ]
+            if DownloaderHelper is None:
+                raise RuntimeError("DownloaderHelper 未导入")
+            helper = DownloaderHelper()
+            items = [
+                {"title": cfg.name, "value": cfg.name}
+                for cfg in helper.get_configs().values()
+            ]
         except Exception as e:  # pragma: no cover
-            logger.debug(f"下载器流量统计：读取下载器列表失败 {e}")
+            logger.error(f"下载器流量统计：读取下载器列表失败 {e}")
         return {"data": items}
 
     def api_trend(self, request: Request):
