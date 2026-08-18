@@ -20,16 +20,31 @@ from typing import Any, Dict, List, Optional, Tuple
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import Request
 
+# 核心依赖：与官方/可运行的 V2 插件（limit、removelinkjellyfinfix）保持完全一致
 from app.log import logger
-from app.plugin import _PluginBase
 
-# 以下为可选依赖：不同 MoviePilot 版本/分支的路径或导出名可能不同，
-# 全部做容错导入——缺失时插件仍可加载（仅对应功能降级），避免整插件因 import 失败而消失。
+# _PluginBase：本机 MP 版本路径为 app.plugins（复数）；旧版为 app.plugin（单数）。双路径容错。
 try:
-    from app.event import EventType, eventmanager
+    from app.plugins import _PluginBase
 except Exception:  # pragma: no cover
-    EventType = None
+    try:
+        from app.plugin import _PluginBase
+    except Exception:  # pragma: no cover
+        _PluginBase = object
+
+# 事件相关：本机 MP 版本路径为 app.core.event / app.schemas.types（app.event 不存在）。双路径容错。
+try:
+    from app.core.event import eventmanager
+except Exception:  # pragma: no cover
     eventmanager = None
+
+try:
+    from app.schemas.types import EventType
+except Exception:  # pragma: no cover
+    try:
+        from app.event import EventType
+    except Exception:  # pragma: no cover
+        EventType = None
 
 try:
     from app.helper.downloader import DownloaderHelper
@@ -78,10 +93,12 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.0.0"
+    plugin_version = "1.0.2"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
+    plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
     plugin_description = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
+    plugin_author = "BigRiceFrog"
     plugin_order = 50
 
     # ----------------------- 运行态配置 -----------------------
