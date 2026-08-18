@@ -14,6 +14,7 @@
   - 数据落盘到插件独立数据目录下的 SQLite (traffic.db)。
 """
 import sqlite3
+import traceback
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -93,7 +94,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.0.6"
+    plugin_version = "1.0.7"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -116,6 +117,9 @@ class DownloaderTraffic(_PluginBase):
     # 生命周期
     # =====================================================================
     def init_plugin(self, config: dict = None):
+        # 先初始化 helper（与 limit 插件一致），确保 get_form 调用时可用
+        self._downloader_helper = DownloaderHelper() if DownloaderHelper else None
+        self._sites_helper = SitesHelper() if SitesHelper else None
         config = config or {}
         self._enabled = bool(config.get("enabled"))
         self._cron = config.get("cron") or "*/30 * * * *"
@@ -133,8 +137,6 @@ class DownloaderTraffic(_PluginBase):
             self._limit_speed_kb = int(config.get("limit_speed_kb") or 0)
         except (ValueError, TypeError):
             self._limit_speed_kb = 0
-        self._downloader_helper = DownloaderHelper() if DownloaderHelper else None
-        self._sites_helper = SitesHelper() if SitesHelper else None
         self.__init_db()
         # 事件总线注册（可选，失败不影响核心功能）
         if eventmanager is not None and EventType is not None:
@@ -158,21 +160,19 @@ class DownloaderTraffic(_PluginBase):
     # 配置表单
     # =====================================================================
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        # 从 MP 配置的下载器中读取可选列表（与 limit 插件一致）
+        # 完全照搬 limit 插件写法：init_plugin 中已初始化 self._downloader_helper
         downloader_items = []
         try:
-            if DownloaderHelper is None:
-                raise RuntimeError("DownloaderHelper 未导入")
-            # get_form 被调用时实例可能未经过 init_plugin，直接新建 helper 最稳
-            helper = DownloaderHelper()
-            configs = helper.get_configs()
+            if self._downloader_helper is None:
+                raise RuntimeError("DownloaderHelper 未初始化")
+            configs = self._downloader_helper.get_configs()
             downloader_items = [
-                {"title": cfg.name, "value": cfg.name}
-                for cfg in configs.values()
+                {"title": config.name, "value": config.name}
+                for config in configs.values()
             ]
             logger.debug(f"下载器流量统计：读取到 {len(downloader_items)} 个下载器")
         except Exception as e:  # pragma: no cover
-            logger.error(f"下载器流量统计：读取下载器列表失败 {e}")
+            logger.error(f"下载器流量统计：读取下载器列表失败 {e}\n{traceback.format_exc()}")
 
         return [{
             "component": "VForm",
@@ -331,15 +331,14 @@ class DownloaderTraffic(_PluginBase):
         """返回 MP 已配置的下载器名称列表，供前端 VSelect 使用。"""
         items = []
         try:
-            if DownloaderHelper is None:
-                raise RuntimeError("DownloaderHelper 未导入")
-            helper = DownloaderHelper()
+            if self._downloader_helper is None:
+                raise RuntimeError("DownloaderHelper 未初始化")
             items = [
-                {"title": cfg.name, "value": cfg.name}
-                for cfg in helper.get_configs().values()
+                {"title": config.name, "value": config.name}
+                for config in self._downloader_helper.get_configs().values()
             ]
         except Exception as e:  # pragma: no cover
-            logger.error(f"下载器流量统计：读取下载器列表失败 {e}")
+            logger.error(f"下载器流量统计：读取下载器列表失败 {e}\n{traceback.format_exc()}")
         return {"data": items}
 
     def api_trend(self, request: Request):
