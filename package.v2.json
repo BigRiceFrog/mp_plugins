@@ -27,16 +27,17 @@
   },
   "DownloaderTraffic": {
     "name": "下载器流量统计",
-    "description": "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点。Vue 图表化详情页。",
+    "description": "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点。配置页可从 MP 已配置下载器中选择；支持月度上传阈值超限后自动全局限速。Vue 图表化详情页。",
     "labels": "下载器,流量统计,qBittorrent,Transmission,PT",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "author": "BigRiceFrog",
     "level": 1,
     "v2": true,
     "history": {
       "v1.0.0": "初始版本：定时采集 QB/TR 上传下载流量，按年/月/日聚合，按 PT 站点细分，Vue 图表化详情页（柱状图按站、折线图趋势）。",
       "v1.0.1": "修复插件加载失败：将 app.event / app.helper.downloader / app.helper.sites 改为容错导入，并把事件命令注册从类装饰器改为运行时条件注册，避免宿主版本路径差异导致 import 抛错、插件不出现在「我的插件」。",
-      "v1.0.2": "修复插件加载失败根因：导入路径改为本机 MP 实际存在的 app.plugins / app.core.event / app.schemas.types（原 app.plugin / app.event 在本版本不存在），并保留旧版双路径容错。插件现已能正常出现在「我的插件」。"
+      "v1.0.2": "修复插件加载失败根因：导入路径改为本机 MP 实际存在的 app.plugins / app.core.event / app.schemas.types（原 app.plugin / app.event 在本版本不存在），并保留旧版双路径容错。插件现已能正常出现在「我的插件」。",
+      "v1.0.3": "配置页下载器改为从 MP 已配置下载器下拉多选（参考 limit 插件 get_configs）；新增「月度上传阈值(GB)」与「超限后全局上传限速(KB/s)」：当月累计上传达阈值时自动对所选下载器调用 set_speed_limit 全局限速。"
     }
   }
 }

@@ -31,13 +31,19 @@ const local = ref({
   enabled: false,
   cron: '*/30 * * * *',
   downloaders: '',
+  upload_threshold_gb: 0,
+  limit_speed_kb: 0,
 });
 
 onMounted(() => {
+  const c = props.initialConfig || {};
+  const dl = c.downloaders;
   local.value = {
-    enabled: Boolean(props.initialConfig?.enabled),
-    cron: props.initialConfig?.cron || '*/30 * * * *',
-    downloaders: props.initialConfig?.downloaders || '',
+    enabled: Boolean(c.enabled),
+    cron: c.cron || '*/30 * * * *',
+    downloaders: Array.isArray(dl) ? dl.join(',') : (dl || ''),
+    upload_threshold_gb: c.upload_threshold_gb || 0,
+    limit_speed_kb: c.limit_speed_kb || 0,
   };
 });
 
@@ -59,7 +65,7 @@ return (_ctx, _cache) => {
       color: "transparent"
     }, {
       default: _withCtx(() => [
-        _cache[4] || (_cache[4] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计 · 配置", -1)),
+        _cache[6] || (_cache[6] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计 · 配置", -1)),
         _createVNode(_component_VSpacer),
         _createVNode(_component_VBtn, {
           icon: "mdi-content-save",
@@ -100,7 +106,33 @@ return (_ctx, _cache) => {
         label: "指定下载器 (留空=全部，逗号分隔)",
         placeholder: "QB-Main,TR-Seed",
         class: "mt-3",
-        variant: "outlined"
+        variant: "outlined",
+        hint: "仅在「设置」弹窗的表单里支持从 MP 下载器下拉选择",
+        "persistent-hint": ""
+      }, null, 8, ["modelValue"]),
+      _createVNode(_component_VTextField, {
+        modelValue: local.value.upload_threshold_gb,
+        "onUpdate:modelValue": _cache[4] || (_cache[4] = $event => ((local.value.upload_threshold_gb) = $event)),
+        modelModifiers: { number: true },
+        label: "月度上传阈值 (GB)",
+        type: "number",
+        placeholder: "0",
+        class: "mt-3",
+        variant: "outlined",
+        hint: "当前自然月累计上传达到该值后触发全局限速；0=不启用",
+        "persistent-hint": ""
+      }, null, 8, ["modelValue"]),
+      _createVNode(_component_VTextField, {
+        modelValue: local.value.limit_speed_kb,
+        "onUpdate:modelValue": _cache[5] || (_cache[5] = $event => ((local.value.limit_speed_kb) = $event)),
+        modelModifiers: { number: true },
+        label: "超限后全局上传限速 (KB/s)",
+        type: "number",
+        placeholder: "0",
+        class: "mt-3",
+        variant: "outlined",
+        hint: "0=达到阈值也不限速",
+        "persistent-hint": ""
       }, null, 8, ["modelValue"])
     ])
   ]))

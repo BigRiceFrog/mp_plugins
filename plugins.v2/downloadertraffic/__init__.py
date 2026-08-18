@@ -93,7 +93,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.0.2"
+    plugin_version = "1.0.3"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -105,6 +105,9 @@ class DownloaderTraffic(_PluginBase):
     _enabled: bool = False
     _cron: str = "*/30 * * * *"          # 默认每 30 分钟采集一次
     _downloaders: List[str] = []         # 留空 = 统计所有下载器
+    # 月度上传阈值限速
+    _upload_threshold_gb: float = 0.0    # 0 = 不启用（单位 GB）
+    _limit_speed_kb: int = 0             # 超限后全局上传限速（KB/s），0 = 不限速
     _db: Optional[sqlite3.Connection] = None
     _downloader_helper: Optional[DownloaderHelper] = None
     _sites_helper: Optional[SitesHelper] = None
@@ -116,12 +119,20 @@ class DownloaderTraffic(_PluginBase):
         config = config or {}
         self._enabled = bool(config.get("enabled"))
         self._cron = config.get("cron") or "*/30 * * * *"
-        # downloaders 在表单里以逗号分隔的字符串存储
-        raw = config.get("downloaders") or ""
+        # downloaders 在表单里以列表（VSelect multiple）或逗号分隔字符串存储
+        raw = config.get("downloaders") or []
         if isinstance(raw, list):
             self._downloaders = [str(x).strip() for x in raw if str(x).strip()]
         else:
             self._downloaders = [s.strip() for s in str(raw).split(",") if s.strip()]
+        try:
+            self._upload_threshold_gb = float(config.get("upload_threshold_gb") or 0)
+        except (ValueError, TypeError):
+            self._upload_threshold_gb = 0.0
+        try:
+            self._limit_speed_kb = int(config.get("limit_speed_kb") or 0)
+        except (ValueError, TypeError):
+            self._limit_speed_kb = 0
         self._downloader_helper = DownloaderHelper() if DownloaderHelper else None
         self._sites_helper = SitesHelper() if SitesHelper else None
         self.__init_db()
@@ -147,6 +158,18 @@ class DownloaderTraffic(_PluginBase):
     # 配置表单
     # =====================================================================
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
+        # 从 MP 配置的下载器中读取可选列表（与 limit 插件一致）
+        downloader_items = []
+        try:
+            helper = self._downloader_helper or (DownloaderHelper() if DownloaderHelper else None)
+            if helper is not None:
+                downloader_items = [
+                    {"title": cfg.name, "value": cfg.name}
+                    for cfg in helper.get_configs().values()
+                ]
+        except Exception as e:  # pragma: no cover
+            logger.debug(f"下载器流量统计：读取下载器列表失败 {e}")
+
         return [{
             "component": "VForm",
             "content": [
@@ -164,19 +187,44 @@ class DownloaderTraffic(_PluginBase):
                     }
                 },
                 {
+                    "component": "VSelect",
+                    "props": {
+                        "multiple": True,
+                        "chips": True,
+                        "clearable": True,
+                        "model": "downloaders",
+                        "label": "指定下载器（留空=全部）",
+                        "items": downloader_items,
+                        "hint": "从 MP 已配置的下载器中选择；留空则统计全部"
+                    }
+                },
+                {
                     "component": "VTextField",
                     "props": {
-                        "model": "downloaders",
-                        "label": "指定下载器 (留空=全部，多个用逗号分隔)",
-                        "placeholder": "QB-Main,TR-Seed",
-                        "hint": "下载器名称可在 设定-下载器 中查看"
+                        "model": "upload_threshold_gb",
+                        "label": "月度上传阈值 (GB)",
+                        "type": "number",
+                        "placeholder": "0",
+                        "hint": "当前自然月累计上传达到该值后触发全局限速；0=不启用"
+                    }
+                },
+                {
+                    "component": "VTextField",
+                    "props": {
+                        "model": "limit_speed_kb",
+                        "label": "超限后全局上传限速 (KB/s)",
+                        "type": "number",
+                        "placeholder": "0",
+                        "hint": "0=达到阈值也不限速"
                     }
                 }
             ]
         }], {
             "enabled": False,
             "cron": "*/30 * * * *",
-            "downloaders": ""
+            "downloaders": [],
+            "upload_threshold_gb": 0,
+            "limit_speed_kb": 0
         }
 
     # =====================================================================
@@ -375,7 +423,71 @@ class DownloaderTraffic(_PluginBase):
             except Exception as e:
                 logger.error(f"下载器流量统计：处理下载器 {sname} 异常：{e}")
 
+        # 月度上传阈值限速检查
+        self._maybe_apply_monthly_limit(month)
+
         logger.info("下载器流量统计：采集完成")
+
+    def _maybe_apply_monthly_limit(self, month: str):
+        """当月累计上传达到阈值时，给所选下载器设置全局上传限速。"""
+        if self._upload_threshold_gb <= 0 or self._limit_speed_kb <= 0:
+            return
+        if self._db is None:
+            return
+
+        threshold_bytes = int(self._upload_threshold_gb * 1024 * 1024 * 1024)
+        month_upload = self._get_month_total(month, self._downloaders)
+        if month_upload < threshold_bytes:
+            logger.info(
+                f"下载器流量统计：本月上传 {month_upload/1024**3:.2f} GB "
+                f"未达阈值 {self._upload_threshold_gb} GB，不触发限速"
+            )
+            return
+
+        logger.warning(
+            f"下载器流量统计：本月上传 {month_upload/1024**3:.2f} GB "
+            f"已达阈值 {self._upload_threshold_gb} GB，设置全局上传限速 {self._limit_speed_kb} KB/s"
+        )
+        targets = self._downloaders or None
+        try:
+            helper = self._downloader_helper or (DownloaderHelper() if DownloaderHelper else None)
+            if helper is None:
+                return
+            services = helper.get_services(name_filters=targets)
+            for sname, sinfo in (services or {}).items():
+                try:
+                    if sinfo.instance.is_inactive():
+                        logger.warning(f"下载器流量统计：下载器 {sname} 未连接，跳过限速")
+                        continue
+                    # download_limit=0 表示不限下载；upload_limit 单位 KB/s
+                    sinfo.instance.set_speed_limit(download_limit=0, upload_limit=self._limit_speed_kb)
+                    logger.warning(f"下载器流量统计：已对 {sname} 设置全局上传限速 {self._limit_speed_kb} KB/s")
+                except Exception as e:
+                    logger.error(f"下载器流量统计：设置 {sname} 限速失败：{e}")
+        except Exception as e:
+            logger.error(f"下载器流量统计：获取下载器实例失败 {e}")
+
+    def _get_month_total(self, month: str, downloader_names: List[str]) -> int:
+        """统计某自然月（含指定下载器）的累计上传字节数。"""
+        if self._db is None:
+            return 0
+        try:
+            if downloader_names:
+                placeholders = ",".join("?" * len(downloader_names))
+                cur = self._db.execute(
+                    f"SELECT COALESCE(SUM(uploaded),0) FROM traffic_records "
+                    f"WHERE month=? AND downloader IN ({placeholders})",
+                    [month] + list(downloader_names)
+                )
+            else:
+                cur = self._db.execute(
+                    "SELECT COALESCE(SUM(uploaded),0) FROM traffic_records WHERE month=?",
+                    [month]
+                )
+            return int(cur.fetchone()[0] or 0)
+        except Exception as e:  # pragma: no cover
+            logger.debug(f"下载器流量统计：统计月上传失败 {e}")
+            return 0
 
     def _process_torrents(self, torrents, dtype: str,
                           date_str: str, year: int, month: str, ts: int):

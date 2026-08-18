@@ -13,13 +13,19 @@ const local = ref({
   enabled: false,
   cron: '*/30 * * * *',
   downloaders: '',
+  upload_threshold_gb: 0,
+  limit_speed_kb: 0,
 })
 
 onMounted(() => {
+  const c = props.initialConfig || {}
+  const dl = c.downloaders
   local.value = {
-    enabled: Boolean(props.initialConfig?.enabled),
-    cron: props.initialConfig?.cron || '*/30 * * * *',
-    downloaders: props.initialConfig?.downloaders || '',
+    enabled: Boolean(c.enabled),
+    cron: c.cron || '*/30 * * * *',
+    downloaders: Array.isArray(dl) ? dl.join(',') : (dl || ''),
+    upload_threshold_gb: c.upload_threshold_gb || 0,
+    limit_speed_kb: c.limit_speed_kb || 0,
   }
 })
 
@@ -54,6 +60,28 @@ function save() {
         placeholder="QB-Main,TR-Seed"
         class="mt-3"
         variant="outlined"
+        hint="仅在「设置」弹窗的表单里支持从 MP 下载器下拉选择"
+        persistent-hint
+      />
+      <VTextField
+        v-model.number="local.upload_threshold_gb"
+        label="月度上传阈值 (GB)"
+        type="number"
+        placeholder="0"
+        class="mt-3"
+        variant="outlined"
+        hint="当前自然月累计上传达到该值后触发全局限速；0=不启用"
+        persistent-hint
+      />
+      <VTextField
+        v-model.number="local.limit_speed_kb"
+        label="超限后全局上传限速 (KB/s)"
+        type="number"
+        placeholder="0"
+        class="mt-3"
+        variant="outlined"
+        hint="0=达到阈值也不限速"
+        persistent-hint
       />
     </div>
   </div>
