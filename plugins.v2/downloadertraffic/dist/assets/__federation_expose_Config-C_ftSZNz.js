@@ -16,6 +16,14 @@ const {ref,onMounted} = await importShared('vue');
 const _sfc_main = {
   __name: 'Config',
   props: {
+  api: {
+    type: Object,
+    default: () => ({}),
+  },
+  pluginId: {
+    type: String,
+    default: 'downloadertraffic',
+  },
   initialConfig: {
     type: Object,
     default: () => ({}),
@@ -30,21 +38,37 @@ const emit = __emit;
 const local = ref({
   enabled: false,
   cron: '*/30 * * * *',
-  downloaders: '',
+  downloaders: [],
   upload_threshold_gb: 0,
   limit_speed_kb: 0,
 });
 
-onMounted(() => {
+const downloaderItems = ref([]);
+const loadingItems = ref(false);
+
+onMounted(async () => {
   const c = props.initialConfig || {};
   const dl = c.downloaders;
   local.value = {
     enabled: Boolean(c.enabled),
     cron: c.cron || '*/30 * * * *',
-    downloaders: Array.isArray(dl) ? dl.join(',') : (dl || ''),
+    downloaders: Array.isArray(dl) ? dl : ((dl || '').split(',').filter(Boolean)),
     upload_threshold_gb: c.upload_threshold_gb || 0,
     limit_speed_kb: c.limit_speed_kb || 0,
   };
+
+  if (props.api && props.api.get) {
+    loadingItems.value = true;
+    try {
+      const res = await props.api.get(`plugin/${props.pluginId}/downloaders`);
+      const payload = res?.data ?? res;
+      downloaderItems.value = Array.isArray(payload?.data) ? payload.data : [];
+    } catch (e) {
+      console.error('读取下载器列表失败', e);
+    } finally {
+      loadingItems.value = false;
+    }
+  }
 });
 
 function save() {
@@ -58,6 +82,7 @@ return (_ctx, _cache) => {
   const _component_VDivider = _resolveComponent("VDivider");
   const _component_VSwitch = _resolveComponent("VSwitch");
   const _component_VTextField = _resolveComponent("VTextField");
+  const _component_VSelect = _resolveComponent("VSelect");
 
   return (_openBlock(), _createElementBlock("div", _hoisted_1, [
     _createVNode(_component_VToolbar, {
@@ -100,16 +125,20 @@ return (_ctx, _cache) => {
         hint: "默认每 30 分钟采集一次",
         "persistent-hint": ""
       }, null, 8, ["modelValue"]),
-      _createVNode(_component_VTextField, {
+      _createVNode(_component_VSelect, {
         modelValue: local.value.downloaders,
         "onUpdate:modelValue": _cache[3] || (_cache[3] = $event => ((local.value.downloaders) = $event)),
-        label: "指定下载器 (留空=全部，逗号分隔)",
-        placeholder: "QB-Main,TR-Seed",
+        items: downloaderItems.value,
+        loading: loadingItems.value,
+        label: "指定下载器（留空=全部）",
+        multiple: "",
+        chips: "",
+        clearable: "",
         class: "mt-3",
         variant: "outlined",
-        hint: "仅在「设置」弹窗的表单里支持从 MP 下载器下拉选择",
+        hint: "从 MP 已配置的下载器中选择；留空则统计全部",
         "persistent-hint": ""
-      }, null, 8, ["modelValue"]),
+      }, null, 8, ["modelValue", "items", "loading"]),
       _createVNode(_component_VTextField, {
         modelValue: local.value.upload_threshold_gb,
         "onUpdate:modelValue": _cache[4] || (_cache[4] = $event => ((local.value.upload_threshold_gb) = $event)),

@@ -93,7 +93,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.0.4"
+    plugin_version = "1.0.5"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -308,11 +308,31 @@ class DownloaderTraffic(_PluginBase):
             "methods": ["GET"],
             "summary": "查询流量时间趋势",
             "description": "按月/年返回逐日或逐月的累计上传/下载趋势，用于绘制折线图"
+        }, {
+            "path": "/downloaders",
+            "endpoint": self.api_downloaders,
+            "methods": ["GET"],
+            "summary": "获取 MP 已配置下载器列表",
+            "description": "返回已配置的下载器名称列表，供前端配置页下拉选择"
         }]
 
     def get_render_mode(self):
         """启用 Vue 模块联邦页面（图表化详情页）。宿主会从 dist/assets/remoteEntry.js 加载组件。"""
         return ("vue", "dist/assets")
+
+    def api_downloaders(self, request: Request):
+        """返回 MP 已配置的下载器名称列表，供前端 VSelect 使用。"""
+        items = []
+        try:
+            helper = self._downloader_helper or (DownloaderHelper() if DownloaderHelper else None)
+            if helper is not None:
+                items = [
+                    {"title": cfg.name, "value": cfg.name}
+                    for cfg in helper.get_configs().values()
+                ]
+        except Exception as e:  # pragma: no cover
+            logger.debug(f"下载器流量统计：读取下载器列表失败 {e}")
+        return {"data": items}
 
     def api_trend(self, request: Request):
         params = request.query_params

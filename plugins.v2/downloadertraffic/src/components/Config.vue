@@ -2,6 +2,14 @@
 import { ref, onMounted } from 'vue'
 
 const props = defineProps({
+  api: {
+    type: Object,
+    default: () => ({}),
+  },
+  pluginId: {
+    type: String,
+    default: 'downloadertraffic',
+  },
   initialConfig: {
     type: Object,
     default: () => ({}),
@@ -12,20 +20,36 @@ const emit = defineEmits(['save', 'close'])
 const local = ref({
   enabled: false,
   cron: '*/30 * * * *',
-  downloaders: '',
+  downloaders: [],
   upload_threshold_gb: 0,
   limit_speed_kb: 0,
 })
 
-onMounted(() => {
+const downloaderItems = ref([])
+const loadingItems = ref(false)
+
+onMounted(async () => {
   const c = props.initialConfig || {}
   const dl = c.downloaders
   local.value = {
     enabled: Boolean(c.enabled),
     cron: c.cron || '*/30 * * * *',
-    downloaders: Array.isArray(dl) ? dl.join(',') : (dl || ''),
+    downloaders: Array.isArray(dl) ? dl : ((dl || '').split(',').filter(Boolean)),
     upload_threshold_gb: c.upload_threshold_gb || 0,
     limit_speed_kb: c.limit_speed_kb || 0,
+  }
+
+  if (props.api && props.api.get) {
+    loadingItems.value = true
+    try {
+      const res = await props.api.get(`plugin/${props.pluginId}/downloaders`)
+      const payload = res?.data ?? res
+      downloaderItems.value = Array.isArray(payload?.data) ? payload.data : []
+    } catch (e) {
+      console.error('读取下载器列表失败', e)
+    } finally {
+      loadingItems.value = false
+    }
   }
 })
 
@@ -54,13 +78,17 @@ function save() {
         hint="默认每 30 分钟采集一次"
         persistent-hint
       />
-      <VTextField
+      <VSelect
         v-model="local.downloaders"
-        label="指定下载器 (留空=全部，逗号分隔)"
-        placeholder="QB-Main,TR-Seed"
+        :items="downloaderItems"
+        :loading="loadingItems"
+        label="指定下载器（留空=全部）"
+        multiple
+        chips
+        clearable
         class="mt-3"
         variant="outlined"
-        hint="仅在「设置」弹窗的表单里支持从 MP 下载器下拉选择"
+        hint="从 MP 已配置的下载器中选择；留空则统计全部"
         persistent-hint
       />
       <VTextField
