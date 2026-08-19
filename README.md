@@ -41,9 +41,16 @@
 
 **配置变更**：qB 与 Transmission 现在使用同一套 KB 值，例如 `1PTBA:100`、`52pt:100` 均表示 100 KB/s（旧 qB 需填 `102400` 的写法作废）。
 
-### 下载器流量统计 v1.0.9
+### 下载器流量统计 v1.2.0
 
-按年 / 月 / 日统计 qBittorrent、Transmission 的上传 / 下载流量，并细分到每个 PT 站点；支持「月度上传阈值超限后自动全局限速」。详情见插件目录内 `README.md`。
+按年 / 月 / 日统计 qBittorrent、Transmission 的上传 / 下载流量，并细分到每个 PT 站点；支持「月度上传阈值超限后自动全局限速」与「**每月 1 号 00:30 自动恢复限速**」。详情见插件目录内 `README.md`。
+
+**v1.2.0 修复与新增**：
+- **详情页 404 / 设置页下载器下拉为空**：`get_api` 同时注册三条路径（`/records`、`/DownloaderTraffic/records`、`/downloadertraffic/records`），覆盖 MP 取 `plugin_id` 的不同约定；启动日志打印 `type(self).__name__`，一看便知 plugin_id 实际值。
+- **调试按钮**：详情页工具栏新增「更多」菜单，含「立即采集」「立即解除限速」；配置页同步新增。生产环境排错不需要再等 30 分钟。
+- **每月 1 号 00:30 自动恢复限速**（用户需求 #5）：采集结束时检查「今天是不是 1 号 00:30 后、本月是否已恢复过、当前是否在限速」，如是则 `set_speed_limit(upload_limit=0)` 解除，并把 month-year 持久化到 `plugin_state` 表去重。
+
+**v1.1.2 修复（Transmission 流量恒为 0）**：`transmission-rpc` 的 `Torrent` 对象把数据放在内部 `_fields` 字典里，原 `_field()` 只兼容 dict/属性两种形态取不到值；新增 `_fields` 取值兜底，Transmission 也能正确入账。
 
 **v1.0.9 修复（流量统计恒为 0）**：原采集逻辑仅在「已有上次快照」时才累加增量，首轮不记账导致永久为 0 且不报错。改为首次见到种子即记录其当前累计上传 / 下载绝对值，并新增多字段名兜底兼容不同 MP 版本 `TorrentInformation`、兼容 `get_torrents()` 返回 `(list, error)` 元组。详见插件 `README.md`。
 

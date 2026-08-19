@@ -127,7 +127,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.1.2"
+    plugin_version = "1.2.0"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -173,6 +173,16 @@ class DownloaderTraffic(_PluginBase):
         except (ValueError, TypeError):
             self._limit_speed_kb = 0
         self.__init_db()
+        # 启动诊断：打印实例类型供排查 plugin_id（MP 用 plugin.__name__ 当 id）
+        try:
+            cls_name = type(self).__name__
+            module = type(self).__module__ or ""
+            logger.info(
+                f"下载器流量统计：init 完成。plugin_id(类名)={cls_name}, "
+                f"module={module}, enabled={self._enabled}, cron={self._cron}"
+            )
+        except Exception:
+            pass
         # 事件总线注册（可选，失败不影响核心功能）
         if eventmanager is not None and EventType is not None:
             try:
@@ -335,30 +345,44 @@ class DownloaderTraffic(_PluginBase):
     # 对外 API（供页面 / 外部调用）
     # =====================================================================
     def get_api(self) -> List[Dict[str, Any]]:
-        # MP 的 get_plugin_apis 会自动把插件 id（类名 DownloaderTraffic）拼到 path 前，
-        # 最终路由为 /api/v1/plugin/DownloaderTraffic/records（v1、v2 双前缀同时注册）。
-        return [{
-            "path": "/records",
-            "endpoint": self.api_records,
-            "methods": ["GET"],
-            "auth": "bear",
-            "summary": "查询流量统计",
-            "description": "按 年/月/日 查询上传/下载流量，可按站点、下载器过滤"
-        }, {
-            "path": "/trend",
-            "endpoint": self.api_trend,
-            "methods": ["GET"],
-            "auth": "bear",
-            "summary": "查询流量时间趋势",
-            "description": "按月/年返回逐日或逐月的累计上传/下载趋势，用于绘制折线图"
-        }, {
-            "path": "/downloaders",
-            "endpoint": self.api_downloaders,
-            "methods": ["GET"],
-            "auth": "bear",
-            "summary": "获取 MP 已配置下载器列表",
-            "description": "返回已配置的下载器名称列表，供前端配置页下拉选择"
-        }]
+        """
+        注册插件 API。
+        - 同一接口同时注册多种路径，兼容不同 MP 版本（plugin_id 取值/前缀可能不同）
+          * /records                  —— 由 MP 自动拼接 plugin_id 前缀
+          * /DownloaderTraffic/records —— 显式带类名 id（兜底覆盖 v2.15 之前/之后版本）
+          * /downloadertraffic/records —— 显式带文件夹名 id（兜底）
+        - 新增 /collect（GET，手动触发采集）和 /reset-limit（POST，手动解除限速）
+        """
+        # 每条接口对外的逻辑路径（不含 plugin_id）
+        # 后端内部 handler 列表，每条接口给出独立 endpoint（同名 endpoint 会让 FastAPI
+        # 路由去重并报 "duplicate path operation" 错误，故用独立轻量 wrapper。）
+        api_specs: List[Tuple[str, Any, str, List[str], str, str]] = [
+            ("records", self.api_records, "GET", ["GET"],
+             "查询流量统计", "按 年/月/日 查询上传/下载流量，可按站点、下载器过滤"),
+            ("trend", self.api_trend, "GET", ["GET"],
+             "查询流量时间趋势", "按月/年返回逐日或逐月的累计上传/下载趋势，用于绘制折线图"),
+            ("downloaders", self.api_downloaders, "GET", ["GET"],
+             "获取 MP 已配置下载器列表", "返回已配置的下载器名称列表，供前端配置页下拉选择"),
+            ("collect", self.api_collect, "GET", ["GET"],
+             "手动触发一次流量采集", "立即执行一次 _collect()，并返回本次入账统计摘要"),
+            ("reset-limit", self.api_reset_limit, "POST", ["POST", "GET"],
+             "手动解除下载器上传限速", "立即把 upload_limit 设为 0（无限制），用于月初自动恢复或调试"),
+        ]
+        # 兼容前缀：不带 id（由 MP 自动拼）/ 显式带类名 / 显式带文件夹名
+        id_aliases = ["", "DownloaderTraffic", "downloadertraffic"]
+        routes: List[Dict[str, Any]] = []
+        for path, endpoint, _kind, methods, summary, desc in api_specs:
+            for alias in id_aliases:
+                full = f"/{alias}{('/' + path) if alias else path}"
+                routes.append({
+                    "path": full,
+                    "endpoint": endpoint,
+                    "methods": methods,
+                    "auth": "bear",
+                    "summary": summary,
+                    "description": desc,
+                })
+        return routes
 
     def get_render_mode(self):
         """启用 Vue 模块联邦页面（图表化详情页）。宿主会从 dist/assets/remoteEntry.js 加载组件。"""
@@ -458,6 +482,51 @@ class DownloaderTraffic(_PluginBase):
         }
 
     # =====================================================================
+    # 手动触发 & 限速恢复接口
+    # =====================================================================
+    def api_collect(self, request: Request):
+        """手动触发一次采集(同步等待),返回本次入账概要;用于调试按钮和远程触发。"""
+        result = {"ok": False, "triggered_at": int(datetime.now().timestamp())}
+        try:
+            self._collect()
+            result["ok"] = True
+            result["message"] = "采集任务已完成（详见 MP 业务日志）"
+        except Exception as e:
+            result["error"] = str(e)
+            logger.error(f"下载器流量统计：手动采集失败：{e}\n{traceback.format_exc()}")
+        return result
+
+    def api_reset_limit(self, request: Request):
+        """手动解除下载器上传限速。POST 也支持 GET 以方便某些版本下手动调用。"""
+        reason = "手动触发"
+        try:
+            if request is not None:
+                # body 不必解析，简单从 query/body 取说明
+                body_reason = None
+                try:
+                    payload = request.json() if hasattr(request, 'json') else None
+                    if isinstance(payload, dict):
+                        body_reason = payload.get('reason')
+                except Exception:
+                    pass
+                if not body_reason:
+                    body_reason = (request.query_params.get('reason') if hasattr(request, 'query_params') else None)
+                if body_reason:
+                    reason = str(body_reason)[:200]
+        except Exception:
+            pass
+        n = self._do_reset_limit(reason=reason)
+        ym = datetime.now().strftime("%Y-%m")
+        self._save_state("last_limit_reset_year_month", ym)
+        self._save_state("last_limit_reset_at", str(int(datetime.now().timestamp())))
+        return {
+            "ok": True,
+            "reset_count": n,
+            "year_month": ym,
+            "reason": reason,
+        }
+
+    # =====================================================================
     # 详情页（极简版，真实数据走上面的 API）
     # =====================================================================
     def get_page(self) -> List[Dict[str, Any]]:
@@ -470,10 +539,15 @@ class DownloaderTraffic(_PluginBase):
                     "innerHTML": (
                         "插件已按 <b>年 / 月 / 日</b> 自动采集 qBittorrent、Transmission 的上传/下载流量，"
                         "并按 <b>PT 站点</b> 细分。<br/><br/>"
-                        "通过接口获取 JSON 数据（需带 <code>?token=API_TOKEN</code>）：<br/>"
+                        "可通过接口获取 JSON 数据（需带 <code>?token=API_TOKEN</code>）：<br/>"
                         "<code>GET /plugin/downloadertraffic/records?period=day&amp;value=2026-08-18</code><br/>"
                         "<code>GET /plugin/downloadertraffic/records?period=month&amp;value=2026-08</code><br/>"
-                        "<code>GET /plugin/downloadertraffic/records?period=year&amp;value=2026</code><br/><br/>"
+                        "<code>GET /plugin/downloadertraffic/records?period=year&amp;value=2026</code><br/>"
+                        "<code>GET /plugin/downloadertraffic/trend?period=month&amp;value=2026-08</code><br/>"
+                        "<code>GET /plugin/downloadertraffic/downloaders</code><br/><br/>"
+                        "调试与控制接口：<br/>"
+                        "<code>GET /plugin/downloadertraffic/collect</code> —— 立即采集一次<br/>"
+                        "<code>POST /plugin/downloadertraffic/reset-limit</code> —— 立即解除限速<br/><br/>"
                         "可在「设定 - 服务」手动触发「下载器流量采集」，或微信/Telegram 发送 "
                         "<code>/downloader_traffic_collect</code> 立即采集。"
                     )
@@ -555,6 +629,8 @@ class DownloaderTraffic(_PluginBase):
 
         # 月度上传阈值限速检查
         self._maybe_apply_monthly_limit(month)
+        # 月初自动恢复（如果当前已处于限速、且到时间了）
+        self._maybe_reset_monthly_limit()
 
         logger.info("下载器流量统计：采集完成")
 
@@ -596,6 +672,100 @@ class DownloaderTraffic(_PluginBase):
                     logger.error(f"下载器流量统计：设置 {sname} 限速失败：{e}")
         except Exception as e:
             logger.error(f"下载器流量统计：获取下载器实例失败 {e}")
+
+    # =====================================================================
+    # 月初自动恢复限速
+    # =====================================================================
+    def _load_state(self, key: str, default: str = "") -> str:
+        if not self._db:
+            return default
+        try:
+            with self._db_lock:
+                cur = self._db.execute(
+                    "SELECT value FROM plugin_state WHERE key=?",
+                    (key,),
+                )
+                row = cur.fetchone()
+                return row[0] if row else default
+        except Exception:
+            return default
+
+    def _save_state(self, key: str, value: str):
+        if not self._db:
+            return
+        try:
+            with self._db_lock:
+                self._db.execute(
+                    "INSERT INTO plugin_state(key,value) VALUES(?,?) "
+                    "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    (key, value),
+                )
+                self._db.commit()
+        except Exception as e:
+            logger.debug(f"下载器流量统计：保存状态 {key} 失败：{e}")
+
+    def _maybe_reset_monthly_limit(self):
+        """
+        在采集收尾时检查：是否到达「本月 1 号 00:30」。若是，且插件并未在本月
+        已经恢复过、且当前正在限速（阈值 > 0、配置限速 > 0），则解除限速并
+        把 upload_limit 设为 0（不限制）。
+
+        通过 plugin_state 表的 last_limit_reset_year_month 字段去重，避免重复
+        推送。
+        """
+        try:
+            # 用户没有启用限速 → 一切免谈
+            if self._upload_threshold_gb <= 0 or self._limit_speed_kb <= 0:
+                return
+            now = datetime.now()
+            ym = now.strftime("%Y-%m")
+            # 仅在今天是 1 号、且过了 00:30 时才触发（用户配置 "每月 1 号 00:30"）
+            is_window_open = now.day == 1 and (now.hour, now.minute) >= (0, 30)
+            if not is_window_open:
+                return
+            last_ym = self._load_state("last_limit_reset_year_month")
+            if last_ym == ym:
+                return  # 本月已恢复过，不再重复
+            self._do_reset_limit(reason="月初 00:30 自动恢复")
+            self._save_state("last_limit_reset_year_month", ym)
+            self._save_state("last_limit_reset_at", str(int(now.timestamp())))
+        except Exception as e:
+            logger.error(f"下载器流量统计：月初限速恢复检查失败：{e}")
+
+    def _do_reset_limit(self, reason: str = ""):
+        """对所有目标下载器解除上传限速（upload_limit=0）。"""
+        targets = self._downloaders or None
+        helper = self._downloader_helper
+        if helper is None and DownloaderHelper is not None:
+            helper = DownloaderHelper()
+            self._downloader_helper = helper
+        if helper is None:
+            logger.warning("下载器流量统计：DownloaderHelper 不可用，无法恢复限速")
+            return 0
+        try:
+            services = helper.get_services(name_filters=targets) or {}
+        except Exception as e:
+            logger.error(f"下载器流量统计：获取下载器实例失败：{e}")
+            return 0
+        reset_ok = []
+        reset_failed = []
+        for sname, sinfo in services.items():
+            try:
+                if sinfo.instance.is_inactive():
+                    reset_failed.append(f"{sname}(离线)")
+                    continue
+                sinfo.instance.set_speed_limit(download_limit=0, upload_limit=0)
+                reset_ok.append(sname)
+            except Exception as e:
+                reset_failed.append(f"{sname}({e})")
+        if reset_ok:
+            logger.warning(
+                f"下载器流量统计：已{'，原因：' + reason if reason else ''}"
+                f"解除上传限速(0=不限) → {', '.join(reset_ok)}"
+            )
+        if reset_failed:
+            logger.warning(f"下载器流量统计：以下下载器解除限速失败：{reset_failed}")
+        return len(reset_ok)
 
     def _get_month_total(self, month: str, downloader_names: List[str]) -> int:
         """统计某自然月（含指定下载器）的累计上传字节数。"""
@@ -744,6 +914,12 @@ class DownloaderTraffic(_PluginBase):
                 downloaded INTEGER,
                 ts        INTEGER,
                 PRIMARY KEY (hash, downloader)
+            )
+        """)
+        self._db.execute("""
+            CREATE TABLE IF NOT EXISTS plugin_state (
+                key   TEXT PRIMARY KEY,
+                value TEXT
             )
         """)
         self._db.commit()
