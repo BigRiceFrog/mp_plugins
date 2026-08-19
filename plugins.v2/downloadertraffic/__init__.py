@@ -14,6 +14,7 @@
   - 数据落盘到插件独立数据目录下的 SQLite (traffic.db)。
 """
 import sqlite3
+import threading
 import traceback
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional, Tuple
@@ -94,7 +95,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.0.7"
+    plugin_version = "1.0.8"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -110,6 +111,7 @@ class DownloaderTraffic(_PluginBase):
     _upload_threshold_gb: float = 0.0    # 0 = 不启用（单位 GB）
     _limit_speed_kb: int = 0             # 超限后全局上传限速（KB/s），0 = 不限速
     _db: Optional[sqlite3.Connection] = None
+    _db_lock: Optional[threading.RLock] = None
     _downloader_helper: Optional[DownloaderHelper] = None
     _sites_helper: Optional[SitesHelper] = None
 
@@ -120,6 +122,7 @@ class DownloaderTraffic(_PluginBase):
         # 先初始化 helper（与 limit 插件一致），确保 get_form 调用时可用
         self._downloader_helper = DownloaderHelper() if DownloaderHelper else None
         self._sites_helper = SitesHelper() if SitesHelper else None
+        self._db_lock = threading.RLock()
         config = config or {}
         self._enabled = bool(config.get("enabled"))
         self._cron = config.get("cron") or "*/30 * * * *"
@@ -360,13 +363,14 @@ class DownloaderTraffic(_PluginBase):
             args.append(downloader)
         sql += f" GROUP BY {label} ORDER BY {label}"
 
-        cur = self._db.cursor()
-        cur.execute(sql, args)
-        data = [{
-            "label": r[0],
-            "uploaded": int(r[1] or 0),
-            "downloaded": int(r[2] or 0)
-        } for r in cur.fetchall()]
+        with self._db_lock:
+            cur = self._db.cursor()
+            cur.execute(sql, args)
+            data = [{
+                "label": r[0],
+                "uploaded": int(r[1] or 0),
+                "downloaded": int(r[2] or 0)
+            } for r in cur.fetchall()]
         return {"period": period, "value": value, "data": data}
 
     def api_records(self, request: Request):
@@ -401,14 +405,15 @@ class DownloaderTraffic(_PluginBase):
 
         sql += " GROUP BY site, downloader ORDER BY site"
 
-        cur = self._db.cursor()
-        cur.execute(sql, args)
-        data = [{
-            "site": r[0],
-            "downloader": r[1],
-            "uploaded": int(r[2] or 0),
-            "downloaded": int(r[3] or 0)
-        } for r in cur.fetchall()]
+        with self._db_lock:
+            cur = self._db.cursor()
+            cur.execute(sql, args)
+            data = [{
+                "site": r[0],
+                "downloader": r[1],
+                "uploaded": int(r[2] or 0),
+                "downloaded": int(r[3] or 0)
+            } for r in cur.fetchall()]
 
         return {
             "period": period,
@@ -531,23 +536,24 @@ class DownloaderTraffic(_PluginBase):
         """统计某自然月（含指定下载器）的累计上传字节数。"""
         if self._db is None:
             return 0
-        try:
-            if downloader_names:
-                placeholders = ",".join("?" * len(downloader_names))
-                cur = self._db.execute(
-                    f"SELECT COALESCE(SUM(uploaded),0) FROM traffic_records "
-                    f"WHERE month=? AND downloader IN ({placeholders})",
-                    [month] + list(downloader_names)
-                )
-            else:
-                cur = self._db.execute(
-                    "SELECT COALESCE(SUM(uploaded),0) FROM traffic_records WHERE month=?",
-                    [month]
-                )
-            return int(cur.fetchone()[0] or 0)
-        except Exception as e:  # pragma: no cover
-            logger.debug(f"下载器流量统计：统计月上传失败 {e}")
-            return 0
+        with self._db_lock:
+            try:
+                if downloader_names:
+                    placeholders = ",".join("?" * len(downloader_names))
+                    cur = self._db.execute(
+                        f"SELECT COALESCE(SUM(uploaded),0) FROM traffic_records "
+                        f"WHERE month=? AND downloader IN ({placeholders})",
+                        [month] + list(downloader_names)
+                    )
+                else:
+                    cur = self._db.execute(
+                        "SELECT COALESCE(SUM(uploaded),0) FROM traffic_records WHERE month=?",
+                        [month]
+                    )
+                return int(cur.fetchone()[0] or 0)
+            except Exception as e:  # pragma: no cover
+                logger.debug(f"下载器流量统计：统计月上传失败 {e}")
+                return 0
 
     def _process_torrents(self, torrents, dtype: str,
                           date_str: str, year: int, month: str, ts: int):
@@ -583,12 +589,13 @@ class DownloaderTraffic(_PluginBase):
             new_snapshots.append((thash, dtype, up, down, ts))
 
         # 写入 / 累加记录
-        self._upsert_record(date_str, year, month, "GLOBAL", dtype, global_up, global_down, ts)
-        for site, d in delta_by_site.items():
-            self._upsert_record(date_str, year, month, site, dtype, d["up"], d["down"], ts)
+        with self._db_lock:
+            self._upsert_record(date_str, year, month, "GLOBAL", dtype, global_up, global_down, ts)
+            for site, d in delta_by_site.items():
+                self._upsert_record(date_str, year, month, site, dtype, d["up"], d["down"], ts)
 
-        self._replace_snapshots(new_snapshots)
-        self._db.commit()
+            self._replace_snapshots(new_snapshots)
+            self._db.commit()
 
     # =====================================================================
     # 站点归属
@@ -634,7 +641,8 @@ class DownloaderTraffic(_PluginBase):
     # =====================================================================
     def __init_db(self):
         db_path = self.get_data_path() / "traffic.db"
-        self._db = sqlite3.connect(str(db_path))
+        # 定时采集在独立线程运行，API 查询也在别的线程：必须关闭单线程检查并用锁串行化
+        self._db = sqlite3.connect(str(db_path), check_same_thread=False)
         self._db.execute("""
             CREATE TABLE IF NOT EXISTS traffic_records (
                 date      TEXT,
@@ -661,36 +669,39 @@ class DownloaderTraffic(_PluginBase):
         self._db.commit()
 
     def _upsert_record(self, date_str, year, month, site, dtype, up, down, ts):
-        self._db.execute(
-            """
-            INSERT INTO traffic_records (date, year, month, site, downloader, uploaded, downloaded, ts)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(date, site, downloader) DO UPDATE SET
-                uploaded   = uploaded   + excluded.uploaded,
-                downloaded = downloaded + excluded.downloaded,
-                ts = excluded.ts
-            """,
-            (date_str, year, month, site, dtype, up, down, ts)
-        )
+        with self._db_lock:
+            self._db.execute(
+                """
+                INSERT INTO traffic_records (date, year, month, site, downloader, uploaded, downloaded, ts)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(date, site, downloader) DO UPDATE SET
+                    uploaded   = uploaded   + excluded.uploaded,
+                    downloaded = downloaded + excluded.downloaded,
+                    ts = excluded.ts
+                """,
+                (date_str, year, month, site, dtype, up, down, ts)
+            )
 
     def _get_snapshot(self, thash: str, dtype: str) -> Optional[Tuple[int, int]]:
-        cur = self._db.cursor()
-        cur.execute(
-            "SELECT uploaded, downloaded FROM torrent_snapshots WHERE hash=? AND downloader=?",
-            (thash, dtype)
-        )
-        row = cur.fetchone()
+        with self._db_lock:
+            cur = self._db.cursor()
+            cur.execute(
+                "SELECT uploaded, downloaded FROM torrent_snapshots WHERE hash=? AND downloader=?",
+                (thash, dtype)
+            )
+            row = cur.fetchone()
         return (int(row[0]), int(row[1])) if row else None
 
     def _replace_snapshots(self, snapshots: List[Tuple[str, str, int, int, int]]):
-        self._db.executemany(
-            """
-            INSERT INTO torrent_snapshots (hash, downloader, uploaded, downloaded, ts)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(hash, downloader) DO UPDATE SET
-                uploaded   = excluded.uploaded,
-                downloaded = excluded.downloaded,
-                ts = excluded.ts
-            """,
-            snapshots
-        )
+        with self._db_lock:
+            self._db.executemany(
+                """
+                INSERT INTO torrent_snapshots (hash, downloader, uploaded, downloaded, ts)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(hash, downloader) DO UPDATE SET
+                    uploaded   = excluded.uploaded,
+                    downloaded = excluded.downloaded,
+                    ts = excluded.ts
+                """,
+                snapshots
+            )
