@@ -29,7 +29,7 @@
     "name": "下载器流量统计",
     "description": "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点。配置页可从 MP 已配置下载器中选择；支持月度上传阈值超限后自动全局限速。Vue 图表化详情页。",
     "labels": "下载器,流量统计,qBittorrent,Transmission,PT",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "author": "BigRiceFrog",
     "level": 1,
     "v2": true,
@@ -45,7 +45,8 @@
       "v1.0.8": "修复线程间 SQLite 报错导致零数据：定时采集在独立线程运行，sqlite 默认禁止跨线程复用。改为 connect(check_same_thread=False) 并用 threading.RLock 串行化全部 DB 读写（采集与 API 查询互斥）。",
       "v1.0.9": "修复流量统计恒为 0：采集逻辑改为首次见到种子即记录当前累计上传/下载绝对值（此前仅在已有快照时累加增量，首轮不记账导致永久为 0）；新增多字段名兜底兼容不同 MP 版本 TorrentInformation；兼容 get_torrents() 返回 (list, error) 元组或以 hash 为键的字典；增加自诊断日志（种子总数、首种子字段样例、各下载器入账 GB 数）。",
       "v1.1.0": "（该版本的多路径写法有误：会产生 /DownloaderTraffic/DownloaderTraffic/records 畸形路径，可能在某些 MP 版本导致路由注册异常，已废弃）",
-      "v1.1.1": "修复详情页 404 与设置页下载器下拉为空：经核对 MP 源码（core_plugin.py: get_plugin_apis 会自动把插件 id 拼到 path 前），正确写法应与官方 brushflow 插件一致——get_api 直接返回 /records、/trend、/downloaders 等不带 id 的单路径，由 MP 注册为 /api/v1/plugin/DownloaderTraffic/records。撤销上一版错误的多路径写法。"
+      "v1.1.1": "修复详情页 404 与设置页下载器下拉为空：经核对 MP 源码（core_plugin.py: get_plugin_apis 会自动把插件 id 拼到 path 前），正确写法应与官方 brushflow 插件一致——get_api 直接返回 /records、/trend、/downloaders 等不带 id 的单路径，由 MP 注册为 /api/v1/plugin/DownloaderTraffic/records。撤销上一版错误的多路径写法。",
+      "v1.1.2": "修复 Transmission 流量统计恒为 0：_field 增加兼容 transmission-rpc 的 Torrent 内部 _fields 字典取值（此前只兼容 dict/属性，导致 uploadedEver/downloadedEver 取不到）；诊断改为每个下载器各打印一次字段样例及样本种子的 hash/uploaded/downloaded 实际取值，便于确认字段名是否读对。"
     }
   }
 }

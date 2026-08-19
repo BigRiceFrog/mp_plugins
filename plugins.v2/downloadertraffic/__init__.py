@@ -75,17 +75,32 @@ _FIELD_ALIASES = {
 
 
 def _field(obj: Any, *names: str, default: Any = None) -> Any:
-    """从对象或字典里按多个候选字段名取值。"""
+    """从对象或字典里按多个候选字段名取值。
+
+    依次尝试三种形态，覆盖各下载器客户端库的差异：
+      - dict            （qbittorrent-api 的 TorrentDictionary 等）
+      - 内部 _fields    （transmission-rpc 的 Torrent 把数据存在 _fields 字典里）
+      - 普通属性        （TorrentInformation 等）
+    """
     if obj is None:
         return default
-    for name in names:
-        if isinstance(obj, dict):
+    # 1) dict 形态
+    if isinstance(obj, dict):
+        for name in names:
             if name in obj and obj[name] is not None:
                 return obj[name]
-        else:
-            val = getattr(obj, name, None)
-            if val is not None:
-                return val
+        return default
+    # 2) 内部 _fields 形态（transmission-rpc 等）
+    _fields = getattr(obj, "_fields", None)
+    if isinstance(_fields, dict):
+        for name in names:
+            if name in _fields and _fields[name] is not None:
+                return _fields[name]
+    # 3) 普通属性
+    for name in names:
+        val = getattr(obj, name, None)
+        if val is not None:
+            return val
     return default
 
 
@@ -112,7 +127,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.1.1"
+    plugin_version = "1.1.2"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -514,18 +529,24 @@ class DownloaderTraffic(_PluginBase):
                     torrents = list(torrents.values())
                 torrents = torrents or []
                 total_torrents += len(torrents)
-                # 诊断：打印第一个种子的可用字段，便于排查字段名差异
-                if torrents and not getattr(self, "_logged_keys", False):
+                # 诊断：每个下载器打印一次字段样例 + 关键字段实际取值，便于排查
+                if torrents and dtype not in getattr(self, "_logged_dtypes", set()):
                     try:
                         sample = torrents[0]
                         if isinstance(sample, dict):
                             keys = list(sample.keys())
                         else:
-                            keys = [a for a in dir(sample) if not a.startswith("_")][:40]
+                            keys = [a for a in dir(sample) if not a.startswith("_")][:60]
                         logger.info(f"下载器流量统计：种子字段样例({dtype})：{keys}")
+                        logger.info(
+                            f"下载器流量统计：样本种子取值({dtype})："
+                            f"hash={_field_multi(sample, 'hash')} "
+                            f"uploaded={_field_multi(sample, 'uploaded')} "
+                            f"downloaded={_field_multi(sample, 'downloaded')}"
+                        )
                     except Exception:
                         pass
-                    self._logged_keys = True
+                    self._logged_dtypes = getattr(self, "_logged_dtypes", set()) | {dtype}
                 self._process_torrents(torrents, dtype, date_str, year, month, ts)
             except Exception as e:
                 logger.error(f"下载器流量统计：处理下载器 {sname} 异常：{e}")
