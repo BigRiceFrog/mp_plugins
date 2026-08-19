@@ -1,0 +1,19 @@
+
+.dt-page[data-v-cb1d059e] { padding-bottom: 16px;
+}
+.dt-cards[data-v-cb1d059e] { display: flex; gap: 12px; padding: 12px; flex-wrap: wrap;
+}
+.dt-card[data-v-cb1d059e] { flex: 1; min-width: 140px; padding: 12px;
+}
+.dt-section[data-v-cb1d059e] { margin: 12px;
+}
+.dt-bar-label[data-v-cb1d059e] { font-size: 12px; fill: currentColor;
+}
+.dt-bar-val[data-v-cb1d059e] { font-size: 11px; fill: currentColor; opacity: 0.8;
+}
+.dt-axis[data-v-cb1d059e] { font-size: 10px; fill: #999;
+}
+.dt-legend[data-v-cb1d059e] { font-size: 12px; padding: 4px 12px;
+}
+.dt-dot[data-v-cb1d059e] { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 4px 0 12px; vertical-align: middle;
+}

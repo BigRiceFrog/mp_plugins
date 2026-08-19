@@ -29,11 +29,12 @@
     "name": "下载器流量统计",
     "description": "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点。配置页可从 MP 已配置下载器中选择；支持月度上传阈值超限后自动全局限速。Vue 图表化详情页。",
     "labels": "下载器,流量统计,qBittorrent,Transmission,PT",
-    "version": "1.3.1",
+    "version": "1.3.2",
     "author": "BigRiceFrog",
     "level": 1,
     "v2": true,
     "history": {
+      "v1.3.2": "修复设置页下载器下拉仍为空与首页数据不显示：核对 MP 前端源码确认 api.get() 经响应拦截器直接返回响应体（非 axios 响应对象），此前 Page.vue/Config.vue 按 r?.data ?? r 再取 .data 导致取到数组后取不到字段；本版新增 unwrap() 兼容两种返回形态，/records /trend /downloaders 均正确取数并重建 dist。同时修复 Transmission 流量恒为 0：transmission-rpc 的 Torrent 字段为 uploaded_ever/downloaded_ever（snake_case），别名表补充后正确读取。",
       "v1.3.1": "在 v1.3.0 基础上补强重载健壮性：后端新增 reload() 监听 PluginReload 事件，插件重载后重新注册对外 API，避免宿主重载/刷新后路由未注册再次报 404；保留 v1.3.0 已修复的 pluginId 大小写与响应解析。",
       "v1.0.0": "初始版本：定时采集 QB/TR 上传下载流量，按年/月/日聚合，按 PT 站点细分，Vue 图表化详情页（柱状图按站、折线图趋势）。",
       "v1.0.1": "修复插件加载失败：将 app.event / app.helper.downloader / app.helper.sites 改为容错导入，并把事件命令注册从类装饰器改为运行时条件注册，避免宿主版本路径差异导致 import 抛错、插件不出现在「我的插件」。",

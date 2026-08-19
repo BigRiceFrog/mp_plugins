@@ -159,6 +159,16 @@ function defaultValue() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+// api.get 直接返回响应体（MP 前端拦截器已解包 response.data）；
+// 个别宿主若返回 axios 响应对象则解一层 .data
+function unwrap(res) {
+  if (res && typeof res === 'object' && !Array.isArray(res) && 'data' in res &&
+      ('status' in res || 'statusText' in res || 'headers' in res)) {
+    return res.data
+  }
+  return res
+}
+
 async function load() {
   loading.value = true;
   error.value = '';
@@ -170,12 +180,12 @@ async function load() {
       props.api.get(`${base.value}/records?${q.toString()}`),
       props.api.get(`${base.value}/trend?${q.toString()}`),
     ]);
-    const rec = r1?.data ?? r1;
-    const tr = r2?.data ?? r2;
-    records.value = rec?.data || [];
-    totalUp.value = rec?.total_uploaded || 0;
-    totalDown.value = rec?.total_downloaded || 0;
-    trend.value = tr?.data || [];
+    const rec = unwrap(r1) || {};
+    const tr = unwrap(r2) || {};
+    records.value = rec.data || [];
+    totalUp.value = rec.total_uploaded || 0;
+    totalDown.value = rec.total_downloaded || 0;
+    trend.value = tr.data || [];
   } catch (e) {
     error.value = e?.message || '加载失败';
   } finally {
@@ -546,6 +556,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-0f903678"]]);
+const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-cb1d059e"]]);
 
 export { Page as default };

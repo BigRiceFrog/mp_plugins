@@ -68,8 +68,8 @@ except Exception:  # pragma: no cover
 # 这里把常见别名都列上，按优先级依次尝试（dict / 对象两种形态都兼容）。
 _FIELD_ALIASES = {
     "hash": ("hash", "hashString", "hash_string", "infohash", "info_hash"),
-    "uploaded": ("uploaded", "uploadedEver", "uploaded_total", "total_uploaded", "up"),
-    "downloaded": ("downloaded", "downloadedEver", "downloaded_total", "total_downloaded", "down"),
+    "uploaded": ("uploaded", "uploaded_ever", "uploadedEver", "uploaded_total", "total_uploaded", "up"),
+    "downloaded": ("downloaded", "downloaded_ever", "downloadedEver", "downloaded_total", "total_downloaded", "down"),
     "trackers": ("trackers", "tracker", "tracker_list"),
 }
 
@@ -127,7 +127,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.3.1"
+    plugin_version = "1.3.2"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"

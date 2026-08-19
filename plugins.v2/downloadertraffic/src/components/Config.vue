@@ -24,6 +24,16 @@ const pid = computed(() => {
 })
 const base = computed(() => `plugin/${pid.value}`)
 
+// api.get 直接返回响应体（MP 前端拦截器已解包 response.data）；
+// 个别宿主若返回 axios 响应对象则解一层 .data
+function unwrap(res) {
+  if (res && typeof res === 'object' && !Array.isArray(res) && 'data' in res &&
+      ('status' in res || 'statusText' in res || 'headers' in res)) {
+    return res.data
+  }
+  return res
+}
+
 const local = ref({
   enabled: false,
   cron: '*/30 * * * *',
@@ -83,8 +93,10 @@ onMounted(async () => {
     loadingItems.value = true
     try {
       const res = await props.api.get(`${base.value}/downloaders`)
-      const payload = res?.data ?? res
-      downloaderItems.value = Array.isArray(payload?.data) ? payload.data : []
+      // api.get 直接返回响应体 {data: [...]}；兼容 axios 响应对象
+      const body = unwrap(res) || {}
+      const payload = Array.isArray(body) ? body : (body.data ?? body)
+      downloaderItems.value = Array.isArray(payload) ? payload : []
     } catch (e) {
       console.error('读取下载器列表失败', e)
     } finally {
