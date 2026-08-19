@@ -24,31 +24,5 @@
       "v1.1.6": "修复 qB 限速单位 bug：原版 qB 直接调用原始 API（字节/秒）导致限速差 1024 倍；改为统一走 change_torrent 封装，qB 与 TR 均按 KB/秒。",
       "v1.1.5": "原版 by ClarkChen。"
     }
-  },
-  "DownloaderTraffic": {
-    "name": "下载器流量统计",
-    "description": "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点。配置页可从 MP 已配置下载器中选择；支持月度上传阈值超限后自动全局限速。Vue 图表化详情页。",
-    "labels": "下载器,流量统计,qBittorrent,Transmission,PT",
-    "version": "1.3.0",
-    "author": "BigRiceFrog",
-    "level": 1,
-    "v2": true,
-    "history": {
-      "v1.0.0": "初始版本：定时采集 QB/TR 上传下载流量，按年/月/日聚合，按 PT 站点细分，Vue 图表化详情页（柱状图按站、折线图趋势）。",
-      "v1.0.1": "修复插件加载失败：将 app.event / app.helper.downloader / app.helper.sites 改为容错导入，并把事件命令注册从类装饰器改为运行时条件注册，避免宿主版本路径差异导致 import 抛错、插件不出现在「我的插件」。",
-      "v1.0.2": "修复插件加载失败根因：导入路径改为本机 MP 实际存在的 app.plugins / app.core.event / app.schemas.types（原 app.plugin / app.event 在本版本不存在），并保留旧版双路径容错。插件现已能正常出现在「我的插件」。",
-      "v1.0.3": "配置页下载器改为从 MP 已配置下载器下拉多选（参考 limit 插件 get_configs）；新增「月度上传阈值(GB)」与「超限后全局上传限速(KB/s)」：当月累计上传达阈值时自动对所选下载器调用 set_speed_limit 全局限速。",
-      "v1.0.4": "修复插件代码更新不生效问题：由于 CDN/代理缓存导致 1.0.3 代码未正确下发，本版本强制刷新；配置表单改为 VRow/VCol 网格布局，与 limit 插件风格一致。",
-      "v1.0.5": "详情页配置 tab 的下载器也改为 VSelect 下拉：新增 /downloaders 接口返回 MP 已配置下载器，Vue Config.vue 加载时调用并渲染多选下拉，与设置弹窗体验一致。",
-      "v1.0.6": "修复下载器下拉列表为空：get_form 和 /downloaders API 直接新建 DownloaderHelper() 读取配置，避免 self._downloader_helper 在表单渲染时未初始化导致为空；get_api 增加 auth:bear 字段对齐官方插件。",
-      "v1.0.7": "修复下载器下拉列表为空：完全照搬 limit 插件写法——init_plugin 第一行即初始化 self.downloader_helper，get_form 和 /downloaders 接口均使用 self._downloader_helper.get_configs()；增加 traceback 错误日志便于排查。",
-      "v1.0.8": "修复线程间 SQLite 报错导致零数据：定时采集在独立线程运行，sqlite 默认禁止跨线程复用。改为 connect(check_same_thread=False) 并用 threading.RLock 串行化全部 DB 读写（采集与 API 查询互斥）。",
-      "v1.0.9": "修复流量统计恒为 0：采集逻辑改为首次见到种子即记录当前累计上传/下载绝对值（此前仅在已有快照时累加增量，首轮不记账导致永久为 0）；新增多字段名兜底兼容不同 MP 版本 TorrentInformation；兼容 get_torrents() 返回 (list, error) 元组或以 hash 为键的字典；增加自诊断日志（种子总数、首种子字段样例、各下载器入账 GB 数）。",
-      "v1.1.0": "（该版本的多路径写法有误：会产生 /DownloaderTraffic/DownloaderTraffic/records 畸形路径，可能在某些 MP 版本导致路由注册异常，已废弃）",
-      "v1.1.1": "修复详情页 404 与设置页下载器下拉为空：经核对 MP 源码（core_plugin.py: get_plugin_apis 会自动把插件 id 拼到 path 前），正确写法应与官方 brushflow 插件一致——get_api 直接返回 /records、/trend、/downloaders 等不带 id 的单路径，由 MP 注册为 /api/v1/plugin/DownloaderTraffic/records。撤销上一版错误的多路径写法。",
-      "v1.1.2": "修复 Transmission 流量统计恒为 0：_field 增加兼容 transmission-rpc 的 Torrent 内部 _fields 字典取值（此前只兼容 dict/属性，导致 uploadedEver/downloadedEver 取不到）；诊断改为每个下载器各打印一次字段样例及样本种子的 hash/uploaded/downloaded 实际取值，便于确认字段名是否读对。",
-      "v1.2.0": "1) 后端新增手动采集与调试接口：GET /collect 立即触发一次采集，POST /reset-limit 立即解除限速。2) 新增月初自动恢复（用户需求 #5）：每月 1 号 00:30 自动判断是否处于限速，如是则调用 set_speed_limit(upload_limit=0) 解除限速，并把 year-month 持久化到 plugin_state 表去重，避免重复触发。3) 打印 type(self).__name__ 启动诊断，启动后立即可在日志看到 plugin_id 实际值。",
-      "v1.3.0": "彻底修复详情页/设置页 404 与下载器下拉为空：根因是前端组件默认以小写 downloadertraffic 作为 pluginId 调用 API，而后端路由由 MP 以类名 DownloaderTraffic 为前缀注册，大小写不匹配导致一直 404。本版三个 Vue 组件统一改用类名 DownloaderTraffic；get_api 收敛为官方标准单路径写法（/records 等，由 MP 自动拼类名前缀）；前端重建 dist 并新增「立即采集」「立即解除限速」按钮；月初 00:30 自动解除限速功能随前端一并可见。"
-    }
   }
 }
