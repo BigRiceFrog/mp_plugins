@@ -10,6 +10,7 @@
 | --- | --- | --- | --- |
 | 清理媒体文件（Jellyfin修复版） | v2.16.1 | 修复 Jellyfin 删除整个媒体目录时硬链接未同步清理 | 文件整理,媒体库,Jellyfin,硬链接 |
 | 自动限速（KB单位修复版） | v1.1.6 | 修复 qBittorrent 限速单位错误，qB 与 Transmission 统一以 KB 为单位 | 下载器,限速,qBittorrent,Transmission,PT |
+| 下载器流量统计 | v1.0.9 | 按年/月/日统计 qBittorrent、Transmission 上传下载流量并细分 PT 站点，支持月度阈值超限自动限速 | 下载器,流量统计,qBittorrent,Transmission,PT |
 
 ## 安装
 
@@ -40,7 +41,17 @@
 
 **配置变更**：qB 与 Transmission 现在使用同一套 KB 值，例如 `1PTBA:100`、`52pt:100` 均表示 100 KB/s（旧 qB 需填 `102400` 的写法作废）。
 
+### 下载器流量统计 v1.0.9
+
+按年 / 月 / 日统计 qBittorrent、Transmission 的上传 / 下载流量，并细分到每个 PT 站点；支持「月度上传阈值超限后自动全局限速」。详情见插件目录内 `README.md`。
+
+**v1.0.9 修复（流量统计恒为 0）**：原采集逻辑仅在「已有上次快照」时才累加增量，首轮不记账导致永久为 0 且不报错。改为首次见到种子即记录其当前累计上传 / 下载绝对值，并新增多字段名兜底兼容不同 MP 版本 `TorrentInformation`、兼容 `get_torrents()` 返回 `(list, error)` 元组。详见插件 `README.md`。
+
 ## 通用注意事项
 
 - 仓库内各插件均为独立修复版，请勿与对应的原版插件同时启用，避免配置/监控冲突。
-- 后续更新插件时，会同步提升 `package.json` / `package.v2.json` 中的 `version` 与插件代码内的 `plugin_version`，MoviePilot 才会提示更新。
+- **发布新版本必须同步两处版本号**，否则 MP 市场不提示更新、仍显示旧版本：
+  1. 插件代码内的 `plugin_version`（如 `plugins.v2/downloadertraffic/__init__.py`）；
+  2. 仓库根 `package.json` / `package.v2.json` 中对应插件的 `version` 字段（MoviePilot 实际读取的是这一处），并同步追加 `history` 变更说明。
+  > 踩坑：v1.0.9 曾只改了 `plugin_version` 而漏改 `package.v2.json`，导致 MP 长时间显示 1.0.8。
+- 插件 API 路由在安装 / 更新后需**重启 MoviePilot** 才会重新注册；详情页 404、设置页下拉为空时优先排查是否未重启。
