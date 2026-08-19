@@ -112,7 +112,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.0.9"
+    plugin_version = "1.1.0"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -320,28 +320,41 @@ class DownloaderTraffic(_PluginBase):
     # 对外 API（供页面 / 外部调用）
     # =====================================================================
     def get_api(self) -> List[Dict[str, Any]]:
-        return [{
-            "path": "/records",
-            "endpoint": self.api_records,
-            "methods": ["GET"],
-            "auth": "bear",
-            "summary": "查询流量统计",
-            "description": "按 年/月/日 查询上传/下载流量，可按站点、下载器过滤"
-        }, {
-            "path": "/trend",
-            "endpoint": self.api_trend,
-            "methods": ["GET"],
-            "auth": "bear",
-            "summary": "查询流量时间趋势",
-            "description": "按月/年返回逐日或逐月的累计上传/下载趋势，用于绘制折线图"
-        }, {
-            "path": "/downloaders",
-            "endpoint": self.api_downloaders,
-            "methods": ["GET"],
-            "auth": "bear",
-            "summary": "获取 MP 已配置下载器列表",
-            "description": "返回已配置的下载器名称列表，供前端配置页下拉选择"
-        }]
+        # 兼容不同 MP 版本的路由前缀 / 插件 id 约定：
+        # 有的版本前缀已含插件 id（/api/v1/plugin/<id>/x），有的不含（/api/v1/plugin/x）；
+        # 插件 id 也可能取类名（DownloaderTraffic）或文件夹名（downloadertraffic）。
+        # 这里把每个接口注册成多种路径，确保前端实际请求总能命中，避免 404。
+        _ids = ["DownloaderTraffic", "downloadertraffic"]
+        _endpoints = [
+            ("/records", self.api_records, "查询流量统计",
+             "按 年/月/日 查询上传/下载流量，可按站点、下载器过滤"),
+            ("/trend", self.api_trend, "查询流量时间趋势",
+             "按月/年返回逐日或逐月的累计上传/下载趋势，用于绘制折线图"),
+            ("/downloaders", self.api_downloaders, "获取 MP 已配置下载器列表",
+             "返回已配置的下载器名称列表，供前端配置页下拉选择"),
+        ]
+        routes: List[Dict[str, Any]] = []
+        for _base, _ep, _summary, _desc in _endpoints:
+            # 不带 id 的路径（前缀已含 id 的版本）
+            routes.append({
+                "path": _base,
+                "endpoint": _ep,
+                "methods": ["GET"],
+                "auth": "bear",
+                "summary": _summary,
+                "description": _desc,
+            })
+            # 带 id 的路径（前缀不含 id 的版本，覆盖类名与文件夹名两种 id）
+            for _id in _ids:
+                routes.append({
+                    "path": f"/{_id}{_base}",
+                    "endpoint": _ep,
+                    "methods": ["GET"],
+                    "auth": "bear",
+                    "summary": _summary,
+                    "description": _desc,
+                })
+        return routes
 
     def get_render_mode(self):
         """启用 Vue 模块联邦页面（图表化详情页）。宿主会从 dist/assets/remoteEntry.js 加载组件。"""

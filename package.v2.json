@@ -29,7 +29,7 @@
     "name": "下载器流量统计",
     "description": "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点。配置页可从 MP 已配置下载器中选择；支持月度上传阈值超限后自动全局限速。Vue 图表化详情页。",
     "labels": "下载器,流量统计,qBittorrent,Transmission,PT",
-    "version": "1.0.9",
+    "version": "1.1.0",
     "author": "BigRiceFrog",
     "level": 1,
     "v2": true,
@@ -43,7 +43,8 @@
       "v1.0.6": "修复下载器下拉列表为空：get_form 和 /downloaders API 直接新建 DownloaderHelper() 读取配置，避免 self._downloader_helper 在表单渲染时未初始化导致为空；get_api 增加 auth:bear 字段对齐官方插件。",
       "v1.0.7": "修复下载器下拉列表为空：完全照搬 limit 插件写法——init_plugin 第一行即初始化 self.downloader_helper，get_form 和 /downloaders 接口均使用 self._downloader_helper.get_configs()；增加 traceback 错误日志便于排查。",
       "v1.0.8": "修复线程间 SQLite 报错导致零数据：定时采集在独立线程运行，sqlite 默认禁止跨线程复用。改为 connect(check_same_thread=False) 并用 threading.RLock 串行化全部 DB 读写（采集与 API 查询互斥）。",
-      "v1.0.9": "修复流量统计恒为 0：采集逻辑改为首次见到种子即记录当前累计上传/下载绝对值（此前仅在已有快照时累加增量，首轮不记账导致永久为 0）；新增多字段名兜底兼容不同 MP 版本 TorrentInformation；兼容 get_torrents() 返回 (list, error) 元组或以 hash 为键的字典；增加自诊断日志（种子总数、首种子字段样例、各下载器入账 GB 数）。"
+      "v1.0.9": "修复流量统计恒为 0：采集逻辑改为首次见到种子即记录当前累计上传/下载绝对值（此前仅在已有快照时累加增量，首轮不记账导致永久为 0）；新增多字段名兜底兼容不同 MP 版本 TorrentInformation；兼容 get_torrents() 返回 (list, error) 元组或以 hash 为键的字典；增加自诊断日志（种子总数、首种子字段样例、各下载器入账 GB 数）。",
+      "v1.1.0": "修复详情页 404 与设置页下载器下拉为空：原 get_api 仅注册 /records 等不带 id 的路径，在部分 MP 版本下与前端实际请求的 /api/v1/plugin/<id>/records 前缀对不上。改为每个接口同时注册多种路径（带/不带插件 id，覆盖类名 DownloaderTraffic 与文件夹名 downloadertraffic），兼容不同版本的路由前缀约定。"
     }
   }
 }
