@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | 清理媒体文件（Jellyfin修复版） | v2.16.1 | 修复 Jellyfin 删除整个媒体目录时硬链接未同步清理 | 文件整理,媒体库,Jellyfin,硬链接 |
 | 自动限速（KB单位修复版） | v1.1.6 | 修复 qBittorrent 限速单位错误，qB 与 Transmission 统一以 KB 为单位 | 下载器,限速,qBittorrent,Transmission,PT |
-| 下载器流量统计 | v1.0.9 | 按年/月/日统计 qBittorrent、Transmission 上传下载流量并细分 PT 站点，支持月度阈值超限自动限速 | 下载器,流量统计,qBittorrent,Transmission,PT |
+| 下载器流量统计 | v1.3.0 | 按年/月/日统计 qBittorrent、Transmission 上传下载流量并细分 PT 站点，支持月度阈值超限自动限速 | 下载器,流量统计,qBittorrent,Transmission,PT |
 
 ## 安装
 
@@ -41,14 +41,14 @@
 
 **配置变更**：qB 与 Transmission 现在使用同一套 KB 值，例如 `1PTBA:100`、`52pt:100` 均表示 100 KB/s（旧 qB 需填 `102400` 的写法作废）。
 
-### 下载器流量统计 v1.2.0
+### 下载器流量统计 v1.3.0
 
 按年 / 月 / 日统计 qBittorrent、Transmission 的上传 / 下载流量，并细分到每个 PT 站点；支持「月度上传阈值超限后自动全局限速」与「**每月 1 号 00:30 自动恢复限速**」。详情见插件目录内 `README.md`。
 
-**v1.2.0 修复与新增**：
-- **详情页 404 / 设置页下载器下拉为空**：`get_api` 同时注册三条路径（`/records`、`/DownloaderTraffic/records`、`/downloadertraffic/records`），覆盖 MP 取 `plugin_id` 的不同约定；启动日志打印 `type(self).__name__`，一看便知 plugin_id 实际值。
-- **调试按钮**：详情页工具栏新增「更多」菜单，含「立即采集」「立即解除限速」；配置页同步新增。生产环境排错不需要再等 30 分钟。
-- **每月 1 号 00:30 自动恢复限速**（用户需求 #5）：采集结束时检查「今天是不是 1 号 00:30 后、本月是否已恢复过、当前是否在限速」，如是则 `set_speed_limit(upload_limit=0)` 解除，并把 month-year 持久化到 `plugin_state` 表去重。
+**v1.3.0 修复与新增**：
+- **彻底修复详情页 404 / 设置页下载器下拉为空**：根因是前端组件默认以小写 `downloadertraffic` 作为 `pluginId` 调 API，而后端路由由 MP 以类名 `DownloaderTraffic` 为前缀注册（大小写不匹配）。本版三个 Vue 组件统一改用类名，并**重建前端 dist**；`get_api` 收敛为官方标准单路径写法。
+- **调试按钮**：详情页工具栏与配置页均新增「立即采集」「立即解除限速」按钮，分别调 `GET /collect`、`POST /reset-limit`，排错无需再等 30 分钟。
+- **每月 1 号 00:30 自动恢复限速**：采集结束时检查「今天是不是 1 号 00:30 后、本月是否已恢复过、当前是否在限速」，如是则 `set_speed_limit(upload_limit=0)` 解除，并把 year-month 持久化到 `plugin_state` 表去重。
 
 **v1.1.2 修复（Transmission 流量恒为 0）**：`transmission-rpc` 的 `Torrent` 对象把数据放在内部 `_fields` 字典里，原 `_field()` 只兼容 dict/属性两种形态取不到值；新增 `_fields` 取值兜底，Transmission 也能正确入账。
 

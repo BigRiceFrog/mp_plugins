@@ -25,14 +25,14 @@
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `plugin/downloadertraffic/records?period=day&value=2026-08-19` | 日 / 月 / 年聚合 |
-| GET | `plugin/downloadertraffic/trend?period=month&value=2026-08` | 逐日 / 逐月趋势 |
-| GET | `plugin/downloadertraffic/downloaders` | MP 已配置下载器 |
-| GET | `plugin/downloadertraffic/collect` | 立即触发一次采集（同步返回 ok） |
-| POST | `plugin/downloadertraffic/reset-limit` | 立即解除下载器上传限速 |
+| GET | `plugin/DownloaderTraffic/records?period=day&value=2026-08-19` | 日 / 月 / 年聚合 |
+| GET | `plugin/DownloaderTraffic/trend?period=month&value=2026-08` | 逐日 / 逐月趋势 |
+| GET | `plugin/DownloaderTraffic/downloaders` | MP 已配置下载器 |
+| GET | `plugin/DownloaderTraffic/collect` | 立即触发一次采集（同步返回 ok） |
+| POST | `plugin/DownloaderTraffic/reset-limit` | 立即解除下载器上传限速 |
 
-> 实际注册路径会随 MP 版本对 plugin_id（类名 / 文件夹名）的不同解析而异，
-> 本插件 v1.2.0 起**每个接口同时注册三条路径**，覆盖各种约定。
+> MP 会在每个接口路径前自动拼上插件**类名** `DownloaderTraffic` 作为前缀，
+> 因此最终路由为 `/api/v1/plugin/DownloaderTraffic/records` 等（另生成 `/api/v2/plugin/...` 镜像路由）。
 
 ## 版本与更新须知（重要）
 
@@ -49,9 +49,22 @@ MoviePilot 插件市场读取的版本号来自 **`package.v2.json` 中本插件
 在（重新）安装并**重启 MoviePilot** 后才重新注册。若详情页报 404、设置页下载器下拉为空，
 请重启 MP 后查看启动日志「插件 init 完成」一行，里面会打印 `plugin_id` 实际值。
 
+> **v1.3.0 起前端统一用类名 `DownloaderTraffic` 调 API**，因此 `plugin_id` 必须是类名
+> （MP 的 `get_plugin_apis` 就是这么拼的）。若日志里 `plugin_id(类名)` 打印的**不是**
+> `DownloaderTraffic`，请把三个 Vue 组件与 `__init__.py` 的 `get_api` 里的前缀一起改成该值。
+
 ## 修复记录
 
-### v1.2.0 —— 修复 404 + 调试按钮 + 月初自动恢复
+### v1.3.0 —— 彻底修复 404（根因：前端 pluginId 大小写不一致）+ 重建前端
+- **根因**：前端组件默认以小写 `downloadertraffic` 作为 `pluginId` 调 API，
+  而后端路由由 MP 以类名 `DownloaderTraffic` 为前缀注册 → 大小写不匹配，
+  详情页一直 404、配置页下载器下拉一直为空（v1.2.0 前端 dist 也从未重建）。
+- **修复**：三个 Vue 组件统一改用类名 `DownloaderTraffic`（兼容宿主传小写/不传）；
+  `get_api` 收敛为官方标准单路径写法（`/records` 等，MP 自动拼类名前缀）。
+- **重建 dist**：详情页 / 配置页新增「立即采集」「立即解除限速」按钮并随新 bundle 生效。
+- 月初 00:30 自动解除限速功能随前端一并可见（此前仅有后端）。
+
+### v1.2.0 —— 后端新增手动接口 + 月初自动恢复
 - **修复详情页 404 与设置页下载器下拉为空**：`get_api` 同时注册三条路径
   （`/records`、`/DownloaderTraffic/records`、`/downloadertraffic/records`），覆盖
   MP 取 `plugin_id` 的不同约定（类名 vs 文件夹名）。启动时打印

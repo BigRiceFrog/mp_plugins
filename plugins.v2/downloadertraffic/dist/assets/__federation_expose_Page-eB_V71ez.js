@@ -8,45 +8,49 @@ const _export_sfc = (sfc, props) => {
   return target;
 };
 
-const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment,createTextVNode:_createTextVNode} = await importShared('vue');
+const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment} = await importShared('vue');
 
 
 const _hoisted_1 = { class: "dt-page" };
 const _hoisted_2 = {
   key: 0,
+  class: "pa-3"
+};
+const _hoisted_3 = {
+  key: 1,
   class: "text-error pa-3"
 };
-const _hoisted_3 = { class: "dt-cards" };
-const _hoisted_4 = { class: "text-h6" };
+const _hoisted_4 = { class: "dt-cards" };
 const _hoisted_5 = { class: "text-h6" };
 const _hoisted_6 = { class: "text-h6" };
-const _hoisted_7 = {
+const _hoisted_7 = { class: "text-h6" };
+const _hoisted_8 = {
   key: 0,
   class: "text-medium-emphasis"
 };
-const _hoisted_8 = ["width", "height"];
-const _hoisted_9 = ["y"];
-const _hoisted_10 = ["y", "width", "height"];
-const _hoisted_11 = ["x", "y"];
-const _hoisted_12 = ["y", "width", "height"];
-const _hoisted_13 = ["x", "y"];
-const _hoisted_14 = {
+const _hoisted_9 = ["width", "height"];
+const _hoisted_10 = ["y"];
+const _hoisted_11 = ["y", "width", "height"];
+const _hoisted_12 = ["x", "y"];
+const _hoisted_13 = ["y", "width", "height"];
+const _hoisted_14 = ["x", "y"];
+const _hoisted_15 = {
   key: 0,
   class: "text-medium-emphasis"
 };
-const _hoisted_15 = ["x2"];
-const _hoisted_16 = ["y1", "x2", "y2"];
-const _hoisted_17 = {
+const _hoisted_16 = ["x2"];
+const _hoisted_17 = ["y1", "x2", "y2"];
+const _hoisted_18 = {
   x: 4,
   y: 16,
   class: "dt-axis"
 };
-const _hoisted_18 = ["y"];
-const _hoisted_19 = ["points"];
+const _hoisted_19 = ["y"];
 const _hoisted_20 = ["points"];
-const _hoisted_21 = ["x", "y"];
-const _hoisted_22 = { style: {"color":"#4caf50"} };
-const _hoisted_23 = { style: {"color":"#2196f3"} };
+const _hoisted_21 = ["points"];
+const _hoisted_22 = ["x", "y"];
+const _hoisted_23 = { style: {"color":"#4caf50"} };
+const _hoisted_24 = { style: {"color":"#2196f3"} };
 
 const {ref,computed,onMounted,watch} = await importShared('vue');
 
@@ -95,7 +99,49 @@ const totalUp = ref(0);
 const totalDown = ref(0);
 const trend = ref([]);
 
-const base = computed(() => `plugin/${props.pluginId}`);
+// 后端 API 路由由 MoviePilot 以「插件类名 DownloaderTraffic」为前缀注册，
+// 这里固定使用类名，兼容宿主传入小写文件夹名 / 未传 pluginId 的情况。
+const pid = computed(() => {
+  const v = props.pluginId;
+  return v && v !== 'downloadertraffic' ? v : 'DownloaderTraffic'
+});
+const base = computed(() => `plugin/${pid.value}`);
+
+// 手动触发采集 / 解除限速
+const collectBusy = ref(false);
+const resetBusy = ref(false);
+const actionMsg = ref('');
+
+async function doCollect() {
+  collectBusy.value = true;
+  actionMsg.value = '';
+  try {
+    const r = await props.api.get(`${base.value}/collect`);
+    const payload = r?.data ?? r;
+    actionMsg.value = payload?.ok ? '已触发采集，稍后自动刷新' : `采集失败：${payload?.error || ''}`;
+  } catch (e) {
+    actionMsg.value = `采集请求失败：${e?.message || e}`;
+  } finally {
+    collectBusy.value = false;
+    setTimeout(load, 800);
+  }
+}
+
+async function doReset() {
+  resetBusy.value = true;
+  actionMsg.value = '';
+  try {
+    const r = await props.api.post(`${base.value}/reset-limit`);
+    const payload = r?.data ?? r;
+    actionMsg.value = payload?.ok
+      ? `已解除 ${payload.reset_count ?? 0} 个下载器的上传限速`
+      : `解除失败：${payload?.error || ''}`;
+  } catch (e) {
+    actionMsg.value = `解除请求失败：${e?.message || e}`;
+  } finally {
+    resetBusy.value = false;
+  }
+}
 
 function fmtBytes(n) {
   const num = Number(n || 0);
@@ -205,6 +251,7 @@ return (_ctx, _cache) => {
   const _component_VBtn = _resolveComponent("VBtn");
   const _component_VToolbar = _resolveComponent("VToolbar");
   const _component_VDivider = _resolveComponent("VDivider");
+  const _component_VAlert = _resolveComponent("VAlert");
   const _component_VCard = _resolveComponent("VCard");
   const _component_VDataTable = _resolveComponent("VDataTable");
 
@@ -214,7 +261,7 @@ return (_ctx, _cache) => {
       color: "transparent"
     }, {
       default: _withCtx(() => [
-        _cache[4] || (_cache[4] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计", -1)),
+        _cache[6] || (_cache[6] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计", -1)),
         _createVNode(_component_VSpacer),
         _createVNode(_component_VSelect, {
           modelValue: period.value,
@@ -257,6 +304,32 @@ return (_ctx, _cache) => {
           onClick: load
         }, null, 8, ["loading"]),
         _createVNode(_component_VBtn, {
+          color: "primary",
+          variant: "tonal",
+          density: "comfortable",
+          loading: collectBusy.value,
+          class: "ms-2",
+          onClick: doCollect
+        }, {
+          default: _withCtx(() => [...(_cache[4] || (_cache[4] = [
+            _createTextVNode("立即采集", -1)
+          ]))]),
+          _: 1
+        }, 8, ["loading"]),
+        _createVNode(_component_VBtn, {
+          color: "warning",
+          variant: "tonal",
+          density: "comfortable",
+          loading: resetBusy.value,
+          class: "ms-2",
+          onClick: doReset
+        }, {
+          default: _withCtx(() => [...(_cache[5] || (_cache[5] = [
+            _createTextVNode("解除限速", -1)
+          ]))]),
+          _: 1
+        }, 8, ["loading"]),
+        _createVNode(_component_VBtn, {
           icon: "mdi-close",
           variant: "text",
           onClick: _cache[3] || (_cache[3] = $event => (emit('close')))
@@ -265,18 +338,32 @@ return (_ctx, _cache) => {
       _: 1
     }),
     _createVNode(_component_VDivider),
-    (error.value)
-      ? (_openBlock(), _createElementBlock("div", _hoisted_2, _toDisplayString(error.value), 1))
+    (actionMsg.value)
+      ? (_openBlock(), _createElementBlock("div", _hoisted_2, [
+          _createVNode(_component_VAlert, {
+            density: "compact",
+            variant: "tonal",
+            type: actionMsg.value.includes('失败') ? 'error' : 'success'
+          }, {
+            default: _withCtx(() => [
+              _createTextVNode(_toDisplayString(actionMsg.value), 1)
+            ]),
+            _: 1
+          }, 8, ["type"])
+        ]))
       : _createCommentVNode("", true),
-    _createElementVNode("div", _hoisted_3, [
+    (error.value)
+      ? (_openBlock(), _createElementBlock("div", _hoisted_3, _toDisplayString(error.value), 1))
+      : _createCommentVNode("", true),
+    _createElementVNode("div", _hoisted_4, [
       _createVNode(_component_VCard, {
         variant: "tonal",
         color: "green",
         class: "dt-card"
       }, {
         default: _withCtx(() => [
-          _cache[5] || (_cache[5] = _createElementVNode("div", { class: "text-caption" }, "上传流量", -1)),
-          _createElementVNode("div", _hoisted_4, _toDisplayString(fmtBytes(totalUp.value)), 1)
+          _cache[7] || (_cache[7] = _createElementVNode("div", { class: "text-caption" }, "上传流量", -1)),
+          _createElementVNode("div", _hoisted_5, _toDisplayString(fmtBytes(totalUp.value)), 1)
         ]),
         _: 1
       }),
@@ -286,8 +373,8 @@ return (_ctx, _cache) => {
         class: "dt-card"
       }, {
         default: _withCtx(() => [
-          _cache[6] || (_cache[6] = _createElementVNode("div", { class: "text-caption" }, "下载流量", -1)),
-          _createElementVNode("div", _hoisted_5, _toDisplayString(fmtBytes(totalDown.value)), 1)
+          _cache[8] || (_cache[8] = _createElementVNode("div", { class: "text-caption" }, "下载流量", -1)),
+          _createElementVNode("div", _hoisted_6, _toDisplayString(fmtBytes(totalDown.value)), 1)
         ]),
         _: 1
       }),
@@ -296,8 +383,8 @@ return (_ctx, _cache) => {
         class: "dt-card"
       }, {
         default: _withCtx(() => [
-          _cache[7] || (_cache[7] = _createElementVNode("div", { class: "text-caption" }, "分享率", -1)),
-          _createElementVNode("div", _hoisted_6, _toDisplayString(totalDown.value > 0 ? (totalUp.value / totalDown.value).toFixed(2) : '—'), 1)
+          _cache[9] || (_cache[9] = _createElementVNode("div", { class: "text-caption" }, "分享率", -1)),
+          _createElementVNode("div", _hoisted_7, _toDisplayString(totalDown.value > 0 ? (totalUp.value / totalDown.value).toFixed(2) : '—'), 1)
         ]),
         _: 1
       })
@@ -308,7 +395,7 @@ return (_ctx, _cache) => {
     }, {
       text: _withCtx(() => [
         (siteRows.value.length === 0)
-          ? (_openBlock(), _createElementBlock("div", _hoisted_7, "暂无数据"))
+          ? (_openBlock(), _createElementBlock("div", _hoisted_8, "暂无数据"))
           : (_openBlock(), _createElementBlock("svg", {
               key: 1,
               width: barLabelW + barW + 20,
@@ -323,7 +410,7 @@ return (_ctx, _cache) => {
                     x: 0,
                     y: i * (barH + barGap) + barH,
                     class: "dt-bar-label"
-                  }, _toDisplayString(r.site), 9, _hoisted_9),
+                  }, _toDisplayString(r.site), 9, _hoisted_10),
                   _createElementVNode("rect", {
                     x: barLabelW,
                     y: i * (barH + barGap) + 2,
@@ -331,12 +418,12 @@ return (_ctx, _cache) => {
                     height: barH / 2 - 2,
                     fill: "#4caf50",
                     rx: "2"
-                  }, null, 8, _hoisted_10),
+                  }, null, 8, _hoisted_11),
                   _createElementVNode("text", {
                     x: barLabelW + Math.max(1, barUpWidth(r)) + 4,
                     y: i * (barH + barGap) + barH / 2,
                     class: "dt-bar-val"
-                  }, "↑ " + _toDisplayString(fmtBytes(r.uploaded)), 9, _hoisted_11),
+                  }, "↑ " + _toDisplayString(fmtBytes(r.uploaded)), 9, _hoisted_12),
                   _createElementVNode("rect", {
                     x: barLabelW,
                     y: i * (barH + barGap) + barH / 2 + 2,
@@ -344,15 +431,15 @@ return (_ctx, _cache) => {
                     height: barH / 2 - 2,
                     fill: "#2196f3",
                     rx: "2"
-                  }, null, 8, _hoisted_12),
+                  }, null, 8, _hoisted_13),
                   _createElementVNode("text", {
                     x: barLabelW + Math.max(1, barDownWidth(r)) + 4,
                     y: i * (barH + barGap) + barH + 2,
                     class: "dt-bar-val"
-                  }, "↓ " + _toDisplayString(fmtBytes(r.downloaded)), 9, _hoisted_13)
+                  }, "↓ " + _toDisplayString(fmtBytes(r.downloaded)), 9, _hoisted_14)
                 ]))
               }), 128))
-            ], 8, _hoisted_8))
+            ], 8, _hoisted_9))
       ]),
       _: 1
     }),
@@ -362,7 +449,7 @@ return (_ctx, _cache) => {
     }, {
       text: _withCtx(() => [
         (trend.value.length === 0)
-          ? (_openBlock(), _createElementBlock("div", _hoisted_14, "暂无数据"))
+          ? (_openBlock(), _createElementBlock("div", _hoisted_15, "暂无数据"))
           : (_openBlock(), _createElementBlock("svg", {
               key: 1,
               width: lineW,
@@ -375,32 +462,32 @@ return (_ctx, _cache) => {
                 x2: lineW - 10,
                 y2: 10,
                 stroke: "#eee"
-              }, null, 8, _hoisted_15),
+              }, null, 8, _hoisted_16),
               _createElementVNode("line", {
                 x1: linePadL,
                 y1: lineH - linePadB,
                 x2: lineW - 10,
                 y2: lineH - linePadB,
                 stroke: "#ccc"
-              }, null, 8, _hoisted_16),
-              _createElementVNode("text", _hoisted_17, _toDisplayString(fmtBytes(maxTrendBytes.value)), 1),
+              }, null, 8, _hoisted_17),
+              _createElementVNode("text", _hoisted_18, _toDisplayString(fmtBytes(maxTrendBytes.value)), 1),
               _createElementVNode("text", {
                 x: 4,
                 y: lineH - linePadB,
                 class: "dt-axis"
-              }, "0", 8, _hoisted_18),
+              }, "0", 8, _hoisted_19),
               _createElementVNode("polyline", {
                 points: linePoints('uploaded'),
                 fill: "none",
                 stroke: "#4caf50",
                 "stroke-width": "2"
-              }, null, 8, _hoisted_19),
+              }, null, 8, _hoisted_20),
               _createElementVNode("polyline", {
                 points: linePoints('downloaded'),
                 fill: "none",
                 stroke: "#2196f3",
                 "stroke-width": "2"
-              }, null, 8, _hoisted_20),
+              }, null, 8, _hoisted_21),
               (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(lineXLabels.value, (t, i) => {
                 return (_openBlock(), _createElementBlock("text", {
                   key: i,
@@ -408,10 +495,10 @@ return (_ctx, _cache) => {
                   y: lineH - linePadB + 16,
                   class: "dt-axis",
                   "text-anchor": "middle"
-                }, _toDisplayString(t.label), 9, _hoisted_21))
+                }, _toDisplayString(t.label), 9, _hoisted_22))
               }), 128))
             ])),
-        _cache[8] || (_cache[8] = _createElementVNode("div", { class: "dt-legend" }, [
+        _cache[10] || (_cache[10] = _createElementVNode("div", { class: "dt-legend" }, [
           _createElementVNode("span", {
             class: "dt-dot",
             style: {"background":"#4caf50"}
@@ -444,10 +531,10 @@ return (_ctx, _cache) => {
           ]
         }, {
           "item.uploaded": _withCtx(({ item }) => [
-            _createElementVNode("span", _hoisted_22, _toDisplayString(fmtBytes(item.uploaded)), 1)
+            _createElementVNode("span", _hoisted_23, _toDisplayString(fmtBytes(item.uploaded)), 1)
           ]),
           "item.downloaded": _withCtx(({ item }) => [
-            _createElementVNode("span", _hoisted_23, _toDisplayString(fmtBytes(item.downloaded)), 1)
+            _createElementVNode("span", _hoisted_24, _toDisplayString(fmtBytes(item.downloaded)), 1)
           ]),
           _: 1
         }, 8, ["items"])
@@ -459,6 +546,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-c157dd48"]]);
+const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-0f903678"]]);
 
 export { Page as default };

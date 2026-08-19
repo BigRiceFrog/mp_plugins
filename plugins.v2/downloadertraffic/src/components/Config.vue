@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 
 const props = defineProps({
   api: {
@@ -17,6 +17,13 @@ const props = defineProps({
 })
 const emit = defineEmits(['save', 'close'])
 
+// 后端 API 路由以插件类名 DownloaderTraffic 为前缀注册
+const pid = computed(() => {
+  const v = props.pluginId
+  return v && v !== 'downloadertraffic' ? v : 'DownloaderTraffic'
+})
+const base = computed(() => `plugin/${pid.value}`)
+
 const local = ref({
   enabled: false,
   cron: '*/30 * * * *',
@@ -27,6 +34,39 @@ const local = ref({
 
 const downloaderItems = ref([])
 const loadingItems = ref(false)
+const collectBusy = ref(false)
+const resetBusy = ref(false)
+const actionMsg = ref('')
+
+async function doCollect() {
+  collectBusy.value = true
+  actionMsg.value = ''
+  try {
+    const r = await props.api.get(`${base.value}/collect`)
+    const payload = r?.data ?? r
+    actionMsg.value = payload?.ok ? '已触发采集，可稍后打开详情页查看' : `采集失败：${payload?.error || ''}`
+  } catch (e) {
+    actionMsg.value = `采集请求失败：${e?.message || e}`
+  } finally {
+    collectBusy.value = false
+  }
+}
+
+async function doReset() {
+  resetBusy.value = true
+  actionMsg.value = ''
+  try {
+    const r = await props.api.post(`${base.value}/reset-limit`)
+    const payload = r?.data ?? r
+    actionMsg.value = payload?.ok
+      ? `已解除 ${payload.reset_count ?? 0} 个下载器的上传限速`
+      : `解除失败：${payload?.error || ''}`
+  } catch (e) {
+    actionMsg.value = `解除请求失败：${e?.message || e}`
+  } finally {
+    resetBusy.value = false
+  }
+}
 
 onMounted(async () => {
   const c = props.initialConfig || {}
@@ -42,7 +82,7 @@ onMounted(async () => {
   if (props.api && props.api.get) {
     loadingItems.value = true
     try {
-      const res = await props.api.get(`plugin/${props.pluginId}/downloaders`)
+      const res = await props.api.get(`${base.value}/downloaders`)
       const payload = res?.data ?? res
       downloaderItems.value = Array.isArray(payload?.data) ? payload.data : []
     } catch (e) {
@@ -68,6 +108,25 @@ function save() {
     </VToolbar>
     <VDivider />
     <div class="pa-4" style="max-width: 560px">
+      <div v-if="actionMsg" class="mb-3">
+        <VAlert density="compact" variant="tonal" :type="actionMsg.includes('失败') ? 'error' : 'success'">
+          {{ actionMsg }}
+        </VAlert>
+      </div>
+      <div class="d-flex ga-2 mb-3">
+        <VBtn
+          color="primary"
+          variant="tonal"
+          :loading="collectBusy"
+          @click="doCollect"
+        >立即采集流量</VBtn>
+        <VBtn
+          color="warning"
+          variant="tonal"
+          :loading="resetBusy"
+          @click="doReset"
+        >立即解除限速</VBtn>
+      </div>
       <VSwitch v-model="local.enabled" label="启用插件" color="primary" hide-details />
       <VTextField
         v-model="local.cron"

@@ -30,7 +30,49 @@ const totalUp = ref(0)
 const totalDown = ref(0)
 const trend = ref([])
 
-const base = computed(() => `plugin/${props.pluginId}`)
+// 后端 API 路由由 MoviePilot 以「插件类名 DownloaderTraffic」为前缀注册，
+// 这里固定使用类名，兼容宿主传入小写文件夹名 / 未传 pluginId 的情况。
+const pid = computed(() => {
+  const v = props.pluginId
+  return v && v !== 'downloadertraffic' ? v : 'DownloaderTraffic'
+})
+const base = computed(() => `plugin/${pid.value}`)
+
+// 手动触发采集 / 解除限速
+const collectBusy = ref(false)
+const resetBusy = ref(false)
+const actionMsg = ref('')
+
+async function doCollect() {
+  collectBusy.value = true
+  actionMsg.value = ''
+  try {
+    const r = await props.api.get(`${base.value}/collect`)
+    const payload = r?.data ?? r
+    actionMsg.value = payload?.ok ? '已触发采集，稍后自动刷新' : `采集失败：${payload?.error || ''}`
+  } catch (e) {
+    actionMsg.value = `采集请求失败：${e?.message || e}`
+  } finally {
+    collectBusy.value = false
+    setTimeout(load, 800)
+  }
+}
+
+async function doReset() {
+  resetBusy.value = true
+  actionMsg.value = ''
+  try {
+    const r = await props.api.post(`${base.value}/reset-limit`)
+    const payload = r?.data ?? r
+    actionMsg.value = payload?.ok
+      ? `已解除 ${payload.reset_count ?? 0} 个下载器的上传限速`
+      : `解除失败：${payload?.error || ''}`
+  } catch (e) {
+    actionMsg.value = `解除请求失败：${e?.message || e}`
+  } finally {
+    resetBusy.value = false
+  }
+}
 
 function fmtBytes(n) {
   const num = Number(n || 0)
@@ -178,9 +220,31 @@ const lineXLabels = computed(() => {
         class="ms-2"
       />
       <VBtn icon="mdi-refresh" variant="text" :loading="loading" class="ms-2" @click="load" />
+      <VBtn
+        color="primary"
+        variant="tonal"
+        density="comfortable"
+        :loading="collectBusy"
+        class="ms-2"
+        @click="doCollect"
+      >立即采集</VBtn>
+      <VBtn
+        color="warning"
+        variant="tonal"
+        density="comfortable"
+        :loading="resetBusy"
+        class="ms-2"
+        @click="doReset"
+      >解除限速</VBtn>
       <VBtn icon="mdi-close" variant="text" @click="emit('close')" />
     </VToolbar>
     <VDivider />
+
+    <div v-if="actionMsg" class="pa-3">
+      <VAlert density="compact" variant="tonal" :type="actionMsg.includes('失败') ? 'error' : 'success'">
+        {{ actionMsg }}
+      </VAlert>
+    </div>
 
     <div v-if="error" class="text-error pa-3">{{ error }}</div>
 

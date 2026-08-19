@@ -127,7 +127,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.2.0"
+    plugin_version = "1.3.0"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -347,42 +347,61 @@ class DownloaderTraffic(_PluginBase):
     def get_api(self) -> List[Dict[str, Any]]:
         """
         注册插件 API。
-        - 同一接口同时注册多种路径，兼容不同 MP 版本（plugin_id 取值/前缀可能不同）
-          * /records                  —— 由 MP 自动拼接 plugin_id 前缀
-          * /DownloaderTraffic/records —— 显式带类名 id（兜底覆盖 v2.15 之前/之后版本）
-          * /downloadertraffic/records —— 显式带文件夹名 id（兜底）
-        - 新增 /collect（GET，手动触发采集）和 /reset-limit（POST，手动解除限速）
+
+        按 MoviePilot 官方约定：path 以 / 开头，MP 会在每个 path 前自动拼接
+        插件类名作为前缀（get_plugin_apis 中 api["path"] = f"/{plugin_id}{api['path']}"），
+        因此最终路由为：
+          /api/v1/plugin/DownloaderTraffic/records
+          /api/v1/plugin/DownloaderTraffic/trend
+          /api/v1/plugin/DownloaderTraffic/downloaders
+          /api/v1/plugin/DownloaderTraffic/collect
+          /api/v1/plugin/DownloaderTraffic/reset-limit
+        （同时会生成 /api/v2/plugin/... 的镜像路由）
+
+        前端组件固定以类名 DownloaderTraffic 调用，避免大小写不一致导致 404。
         """
-        # 每条接口对外的逻辑路径（不含 plugin_id）
-        # 后端内部 handler 列表，每条接口给出独立 endpoint（同名 endpoint 会让 FastAPI
-        # 路由去重并报 "duplicate path operation" 错误，故用独立轻量 wrapper。）
-        api_specs: List[Tuple[str, Any, str, List[str], str, str]] = [
-            ("records", self.api_records, "GET", ["GET"],
-             "查询流量统计", "按 年/月/日 查询上传/下载流量，可按站点、下载器过滤"),
-            ("trend", self.api_trend, "GET", ["GET"],
-             "查询流量时间趋势", "按月/年返回逐日或逐月的累计上传/下载趋势，用于绘制折线图"),
-            ("downloaders", self.api_downloaders, "GET", ["GET"],
-             "获取 MP 已配置下载器列表", "返回已配置的下载器名称列表，供前端配置页下拉选择"),
-            ("collect", self.api_collect, "GET", ["GET"],
-             "手动触发一次流量采集", "立即执行一次 _collect()，并返回本次入账统计摘要"),
-            ("reset-limit", self.api_reset_limit, "POST", ["POST", "GET"],
-             "手动解除下载器上传限速", "立即把 upload_limit 设为 0（无限制），用于月初自动恢复或调试"),
+        return [
+            {
+                "path": "/records",
+                "endpoint": self.api_records,
+                "methods": ["GET"],
+                "auth": "bear",
+                "summary": "查询流量统计",
+                "description": "按 年/月/日 查询上传/下载流量，可按站点、下载器过滤",
+            },
+            {
+                "path": "/trend",
+                "endpoint": self.api_trend,
+                "methods": ["GET"],
+                "auth": "bear",
+                "summary": "查询流量时间趋势",
+                "description": "按月/年返回逐日或逐月的累计上传/下载趋势，用于绘制折线图",
+            },
+            {
+                "path": "/downloaders",
+                "endpoint": self.api_downloaders,
+                "methods": ["GET"],
+                "auth": "bear",
+                "summary": "获取 MP 已配置下载器列表",
+                "description": "返回已配置的下载器名称列表，供前端配置页下拉选择",
+            },
+            {
+                "path": "/collect",
+                "endpoint": self.api_collect,
+                "methods": ["GET"],
+                "auth": "bear",
+                "summary": "手动触发一次流量采集",
+                "description": "立即执行一次 _collect()，并返回本次入账统计摘要",
+            },
+            {
+                "path": "/reset-limit",
+                "endpoint": self.api_reset_limit,
+                "methods": ["POST", "GET"],
+                "auth": "bear",
+                "summary": "手动解除下载器上传限速",
+                "description": "立即把 upload_limit 设为 0（无限制），用于月初自动恢复或调试",
+            },
         ]
-        # 兼容前缀：不带 id（由 MP 自动拼）/ 显式带类名 / 显式带文件夹名
-        id_aliases = ["", "DownloaderTraffic", "downloadertraffic"]
-        routes: List[Dict[str, Any]] = []
-        for path, endpoint, _kind, methods, summary, desc in api_specs:
-            for alias in id_aliases:
-                full = f"/{alias}{('/' + path) if alias else path}"
-                routes.append({
-                    "path": full,
-                    "endpoint": endpoint,
-                    "methods": methods,
-                    "auth": "bear",
-                    "summary": summary,
-                    "description": desc,
-                })
-        return routes
 
     def get_render_mode(self):
         """启用 Vue 模块联邦页面（图表化详情页）。宿主会从 dist/assets/remoteEntry.js 加载组件。"""
@@ -540,14 +559,14 @@ class DownloaderTraffic(_PluginBase):
                         "插件已按 <b>年 / 月 / 日</b> 自动采集 qBittorrent、Transmission 的上传/下载流量，"
                         "并按 <b>PT 站点</b> 细分。<br/><br/>"
                         "可通过接口获取 JSON 数据（需带 <code>?token=API_TOKEN</code>）：<br/>"
-                        "<code>GET /plugin/downloadertraffic/records?period=day&amp;value=2026-08-18</code><br/>"
-                        "<code>GET /plugin/downloadertraffic/records?period=month&amp;value=2026-08</code><br/>"
-                        "<code>GET /plugin/downloadertraffic/records?period=year&amp;value=2026</code><br/>"
-                        "<code>GET /plugin/downloadertraffic/trend?period=month&amp;value=2026-08</code><br/>"
-                        "<code>GET /plugin/downloadertraffic/downloaders</code><br/><br/>"
+                        "<code>GET /plugin/DownloaderTraffic/records?period=day&amp;value=2026-08-18</code><br/>"
+                        "<code>GET /plugin/DownloaderTraffic/records?period=month&amp;value=2026-08</code><br/>"
+                        "<code>GET /plugin/DownloaderTraffic/records?period=year&amp;value=2026</code><br/>"
+                        "<code>GET /plugin/DownloaderTraffic/trend?period=month&amp;value=2026-08</code><br/>"
+                        "<code>GET /plugin/DownloaderTraffic/downloaders</code><br/><br/>"
                         "调试与控制接口：<br/>"
-                        "<code>GET /plugin/downloadertraffic/collect</code> —— 立即采集一次<br/>"
-                        "<code>POST /plugin/downloadertraffic/reset-limit</code> —— 立即解除限速<br/><br/>"
+                        "<code>GET /plugin/DownloaderTraffic/collect</code> —— 立即采集一次<br/>"
+                        "<code>POST /plugin/DownloaderTraffic/reset-limit</code> —— 立即解除限速<br/><br/>"
                         "可在「设定 - 服务」手动触发「下载器流量采集」，或微信/Telegram 发送 "
                         "<code>/downloader_traffic_collect</code> 立即采集。"
                     )

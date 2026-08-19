@@ -12,7 +12,11 @@ const props = defineProps({
   },
 })
 
-const base = computed(() => `plugin/${props.pluginId}`)
+const base = computed(() => {
+  const v = props.pluginId
+  // 后端 API 路由以插件类名 DownloaderTraffic 为前缀注册
+  return `plugin/${v && v !== 'downloadertraffic' ? v : 'DownloaderTraffic'}`
+})
 const loading = ref(false)
 const up = ref(0)
 const down = ref(0)
