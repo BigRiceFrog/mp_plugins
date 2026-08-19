@@ -64,8 +64,20 @@ except Exception:  # pragma: no cover
 # ---------------------------------------------------------------------------
 
 
+# 不同 MoviePilot 版本里 TorrentInformation / TorrentDictionary 的字段名不一致，
+# 这里把常见别名都列上，按优先级依次尝试（dict / 对象两种形态都兼容）。
+_FIELD_ALIASES = {
+    "hash": ("hash", "hashString", "hash_string", "infohash", "info_hash"),
+    "uploaded": ("uploaded", "uploadedEver", "uploaded_total", "total_uploaded", "up"),
+    "downloaded": ("downloaded", "downloadedEver", "downloaded_total", "total_downloaded", "down"),
+    "trackers": ("trackers", "tracker", "tracker_list"),
+}
+
+
 def _field(obj: Any, *names: str, default: Any = None) -> Any:
     """从对象或字典里按多个候选字段名取值。"""
+    if obj is None:
+        return default
     for name in names:
         if isinstance(obj, dict):
             if name in obj and obj[name] is not None:
@@ -75,6 +87,11 @@ def _field(obj: Any, *names: str, default: Any = None) -> Any:
             if val is not None:
                 return val
     return default
+
+
+def _field_multi(obj: Any, key: str, default: Any = None) -> Any:
+    """用预定义的别名表按 key 取值，兼容 dict / 对象。"""
+    return _field(obj, *_FIELD_ALIASES.get(key, (key,)), default=default)
 
 
 def _extract_domain(url: str) -> str:
@@ -95,7 +112,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.0.8"
+    plugin_version = "1.0.9"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -473,6 +490,7 @@ class DownloaderTraffic(_PluginBase):
             logger.warning("下载器流量统计：未找到可用下载器")
             return
 
+        total_torrents = 0
         for sname, sinfo in services.items():
             try:
                 if sinfo.instance.is_inactive():
@@ -480,13 +498,37 @@ class DownloaderTraffic(_PluginBase):
                     continue
                 downloader = sinfo.instance
                 dtype = sinfo.type  # "qbittorrent" / "transmission"
-                torrents, error = downloader.get_torrents()
+                # get_torrents 返回 (torrents, error)；兼容只返回列表的写法
+                result = downloader.get_torrents()
+                if isinstance(result, tuple):
+                    torrents, error = result
+                else:
+                    torrents, error = result, None
                 if error:
                     logger.error(f"下载器流量统计：获取 {sname} 种子失败：{error}")
                     continue
-                self._process_torrents(torrents or [], dtype, date_str, year, month, ts)
+                # 兼容 get_torrents 返回以 hash 为键的字典的情况
+                if isinstance(torrents, dict):
+                    torrents = list(torrents.values())
+                torrents = torrents or []
+                total_torrents += len(torrents)
+                # 诊断：打印第一个种子的可用字段，便于排查字段名差异
+                if torrents and not getattr(self, "_logged_keys", False):
+                    try:
+                        sample = torrents[0]
+                        if isinstance(sample, dict):
+                            keys = list(sample.keys())
+                        else:
+                            keys = [a for a in dir(sample) if not a.startswith("_")][:40]
+                        logger.info(f"下载器流量统计：种子字段样例({dtype})：{keys}")
+                    except Exception:
+                        pass
+                    self._logged_keys = True
+                self._process_torrents(torrents, dtype, date_str, year, month, ts)
             except Exception as e:
                 logger.error(f"下载器流量统计：处理下载器 {sname} 异常：{e}")
+
+        logger.info(f"下载器流量统计：本次共采集 {total_torrents} 个种子")
 
         # 月度上传阈值限速检查
         self._maybe_apply_monthly_limit(month)
@@ -560,33 +602,48 @@ class DownloaderTraffic(_PluginBase):
         delta_by_site: Dict[str, Dict[str, int]] = {}
         global_up = global_down = 0
         new_snapshots: List[Tuple[str, str, int, int, int]] = []
+        skipped = 0
 
         for t in torrents:
-            thash = _field(t, "hash", "hashString")
+            thash = _field_multi(t, "hash")
             if not thash:
+                skipped += 1
                 continue
-            up = int(_field(t, "uploaded", "uploadedEver", default=0) or 0)
-            down = int(_field(t, "downloaded", "downloadedEver", default=0) or 0)
-            trackers = _field(t, "trackers", default=[]) or []
+            up = int(_field_multi(t, "uploaded", default=0) or 0)
+            down = int(_field_multi(t, "downloaded", default=0) or 0)
+            trackers = _field_multi(t, "trackers", default=[]) or []
             site = self._resolve_site(trackers)
 
             prev = self._get_snapshot(thash, dtype)
             if prev is not None:
+                # 已有基准快照：累加增量（下载器重启/重新添加会归零，已做保护）
                 dup = up - prev[0]
                 ddown = down - prev[1]
-                # 计数器重置（下载器重启 / 种子重新添加）保护
                 if dup < 0:
                     dup = 0
                 if ddown < 0:
                     ddown = 0
-                if dup or ddown:
-                    bucket = delta_by_site.setdefault(site, {"up": 0, "down": 0})
-                    bucket["up"] += dup
-                    bucket["down"] += ddown
-                    global_up += dup
-                    global_down += ddown
+            else:
+                # 首次见到该种子：把当前累计值作为基准直接入账，
+                # 避免「永远等不到上一次快照」导致数据永久为 0。
+                dup = max(0, up)
+                ddown = max(0, down)
+
+            if dup or ddown:
+                bucket = delta_by_site.setdefault(site, {"up": 0, "down": 0})
+                bucket["up"] += dup
+                bucket["down"] += ddown
+                global_up += dup
+                global_down += ddown
 
             new_snapshots.append((thash, dtype, up, down, ts))
+
+        if skipped:
+            logger.warning(f"下载器流量统计：{dtype} 有 {skipped} 个种子缺少 hash，已跳过")
+        logger.info(
+            f"下载器流量统计：{dtype} 本次入账 上传 {global_up/1024**3:.3f} GB / "
+            f"下载 {global_down/1024**3:.3f} GB（种子数 {len(torrents)}）"
+        )
 
         # 写入 / 累加记录
         with self._db_lock:
