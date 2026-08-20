@@ -40,7 +40,10 @@ const local = ref({
   downloaders: [],
   upload_threshold_gb: 0,
   limit_speed_kb: 0,
+  limit_download_kb: 0,
   recovery_speed_kb: 0,
+  recovery_download_kb: 0,
+  recovery_cron: '30 0 1 * *',
 })
 
 const downloaderItems = ref([])
@@ -77,7 +80,7 @@ async function doTestLimit() {
     const payload = r?.data ?? r
     showAction(
       payload?.ok
-        ? `已按超限限速 ${payload.speed_kb ?? 0} KB/s 设置 ${payload.applied_count ?? 0} 个下载器`
+        ? `已按超限限速 上传${payload.upload_kb ?? 0}/下载${payload.download_kb ?? 0} KB/s 设置 ${payload.applied_count ?? 0} 个下载器`
         : `操作失败：${payload?.error || ''}`,
       !payload?.ok
     )
@@ -97,7 +100,7 @@ async function doReset() {
     const payload = r?.data ?? r
     showAction(
       payload?.ok
-        ? `已按月初恢复限速 ${payload.speed_kb ?? 0} KB/s 设置 ${payload.reset_count ?? 0} 个下载器`
+        ? `已按恢复限速 上传${payload.upload_kb ?? 0}/下载${payload.download_kb ?? 0} KB/s 设置 ${payload.reset_count ?? 0} 个下载器`
         : `操作失败：${payload?.error || ''}`,
       !payload?.ok
     )
@@ -117,7 +120,10 @@ onMounted(async () => {
     downloaders: Array.isArray(dl) ? dl : ((dl || '').split(',').filter(Boolean)),
     upload_threshold_gb: c.upload_threshold_gb || 0,
     limit_speed_kb: c.limit_speed_kb || 0,
+    limit_download_kb: c.limit_download_kb || 0,
     recovery_speed_kb: c.recovery_speed_kb || 0,
+    recovery_download_kb: c.recovery_download_kb || 0,
+    recovery_cron: c.recovery_cron || '30 0 1 * *',
   }
 
   if (props.api && props.api.get) {
@@ -216,17 +222,46 @@ function save() {
         placeholder="0"
         class="mt-3"
         variant="outlined"
-        hint="0=达到阈值也不限速"
+        hint="0=达到阈值也不限上传"
         persistent-hint
       />
       <VTextField
-        v-model.number="local.recovery_speed_kb"
-        label="月初恢复上传限速 (KB/s)"
+        v-model.number="local.limit_download_kb"
+        label="超限后全局下载限速 (KB/s)"
         type="number"
         placeholder="0"
         class="mt-3"
         variant="outlined"
-        hint="每月 1 号 00:30 把全局上传限速设成该值（如 4096=4M/s）；0=完全放开不限速"
+        hint="0=达到阈值也不限下载"
+        persistent-hint
+      />
+      <VTextField
+        v-model.number="local.recovery_speed_kb"
+        label="月初恢复全局上传限速 (KB/s)"
+        type="number"
+        placeholder="0"
+        class="mt-3"
+        variant="outlined"
+        hint="恢复时把全局上传限速设成该值（如 4096=4M/s）；0=完全放开"
+        persistent-hint
+      />
+      <VTextField
+        v-model.number="local.recovery_download_kb"
+        label="月初恢复全局下载限速 (KB/s)"
+        type="number"
+        placeholder="0"
+        class="mt-3"
+        variant="outlined"
+        hint="恢复时把全局下载限速设成该值；0=完全放开"
+        persistent-hint
+      />
+      <VTextField
+        v-model="local.recovery_cron"
+        label="月初恢复触发时间 (Cron 表达式)"
+        placeholder="30 0 1 * *"
+        class="mt-3"
+        variant="outlined"
+        hint="默认每月1号00:30（30 0 1 * *）。可临时改成更频繁的值来测试恢复动作"
         persistent-hint
       />
     </div>

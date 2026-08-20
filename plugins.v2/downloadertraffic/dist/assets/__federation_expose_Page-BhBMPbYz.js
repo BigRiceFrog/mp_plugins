@@ -430,7 +430,7 @@ return (_ctx, _cache) => {
                     rx: "2"
                   }, null, 8, _hoisted_11),
                   _createElementVNode("text", {
-                    x: barLabelW + Math.max(1, barUpWidth(r)) + 4,
+                    x: barLabelW + barW + 8,
                     y: i * (barH + barGap) + barH / 2,
                     class: "dt-bar-val"
                   }, "↑ " + _toDisplayString(fmtBytes(r.uploaded)), 9, _hoisted_12),
@@ -443,7 +443,7 @@ return (_ctx, _cache) => {
                     rx: "2"
                   }, null, 8, _hoisted_13),
                   _createElementVNode("text", {
-                    x: barLabelW + Math.max(1, barDownWidth(r)) + 4,
+                    x: barLabelW + barW + 8,
                     y: i * (barH + barGap) + barH + 2,
                     class: "dt-bar-val"
                   }, "↓ " + _toDisplayString(fmtBytes(r.downloaded)), 9, _hoisted_14)
@@ -556,6 +556,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-a66c7408"]]);
+const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-e8907c14"]]);
 
 export { Page as default };

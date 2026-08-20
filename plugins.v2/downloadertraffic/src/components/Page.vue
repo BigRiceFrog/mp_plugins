@@ -293,7 +293,7 @@ const lineXLabels = computed(() => {
               rx="2"
             />
             <text
-              :x="barLabelW + Math.max(1, barUpWidth(r)) + 4"
+              :x="barLabelW + barW + 8"
               :y="i * (barH + barGap) + barH / 2"
               class="dt-bar-val"
             >↑ {{ fmtBytes(r.uploaded) }}</text>
@@ -307,7 +307,7 @@ const lineXLabels = computed(() => {
               rx="2"
             />
             <text
-              :x="barLabelW + Math.max(1, barDownWidth(r)) + 4"
+              :x="barLabelW + barW + 8"
               :y="i * (barH + barGap) + barH + 2"
               class="dt-bar-val"
             >↓ {{ fmtBytes(r.downloaded) }}</text>

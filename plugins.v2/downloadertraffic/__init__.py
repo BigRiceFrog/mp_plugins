@@ -168,7 +168,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.4.1"
+    plugin_version = "1.5.0"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -183,7 +183,10 @@ class DownloaderTraffic(_PluginBase):
     # 月度上传阈值限速
     _upload_threshold_gb: float = 0.0    # 0 = 不启用（单位 GB）
     _limit_speed_kb: int = 0             # 超限后全局上传限速（KB/s），0 = 不限速
-    _recovery_speed_kb: int = 0          # 每月 1 号 00:30 恢复到的上传限速（KB/s），0 = 完全放开不限速
+    _limit_download_kb: int = 0          # 超限后全局下载限速（KB/s），0 = 不限速
+    _recovery_speed_kb: int = 0          # 月初恢复到的上传限速（KB/s），0 = 完全放开不限速
+    _recovery_download_kb: int = 0       # 月初恢复到的下载限速（KB/s），0 = 完全放开不限速
+    _recovery_cron: str = "30 0 1 * *"   # 月初恢复触发时间（Cron，默认每月1号00:30）
     _db: Optional[sqlite3.Connection] = None
     _db_lock: Optional[threading.RLock] = None
     _downloader_helper: Optional[DownloaderHelper] = None
@@ -215,9 +218,18 @@ class DownloaderTraffic(_PluginBase):
         except (ValueError, TypeError):
             self._limit_speed_kb = 0
         try:
+            self._limit_download_kb = int(config.get("limit_download_kb") or 0)
+        except (ValueError, TypeError):
+            self._limit_download_kb = 0
+        try:
             self._recovery_speed_kb = int(config.get("recovery_speed_kb") or 0)
         except (ValueError, TypeError):
             self._recovery_speed_kb = 0
+        try:
+            self._recovery_download_kb = int(config.get("recovery_download_kb") or 0)
+        except (ValueError, TypeError):
+            self._recovery_download_kb = 0
+        self._recovery_cron = str(config.get("recovery_cron") or "30 0 1 * *")
         self.__init_db()
         self._cleanup_bad_site_rows()
         self._migrate_site_rows()
@@ -369,7 +381,21 @@ class DownloaderTraffic(_PluginBase):
                                     "label": "超限后全局上传限速 (KB/s)",
                                     "type": "number",
                                     "placeholder": "0",
-                                    "hint": "0=达到阈值也不限速"
+                                    "hint": "0=达到阈值也不限上传"
+                                }
+                            }]
+                        },
+                        {
+                            "component": "VCol",
+                            "props": {"cols": 12, "md": 6},
+                            "content": [{
+                                "component": "VTextField",
+                                "props": {
+                                    "model": "limit_download_kb",
+                                    "label": "超限后全局下载限速 (KB/s)",
+                                    "type": "number",
+                                    "placeholder": "0",
+                                    "hint": "0=达到阈值也不限下载"
                                 }
                             }]
                         },
@@ -380,10 +406,37 @@ class DownloaderTraffic(_PluginBase):
                                 "component": "VTextField",
                                 "props": {
                                     "model": "recovery_speed_kb",
-                                    "label": "月初恢复上传限速 (KB/s)",
+                                    "label": "月初恢复全局上传限速 (KB/s)",
                                     "type": "number",
                                     "placeholder": "0",
-                                    "hint": "每月1号00:30把全局上传限速设成该值（如 4096=4M/s）；0=完全放开不限速"
+                                    "hint": "恢复时把全局上传限速设成该值（如 4096=4M/s）；0=完全放开"
+                                }
+                            }]
+                        },
+                        {
+                            "component": "VCol",
+                            "props": {"cols": 12, "md": 6},
+                            "content": [{
+                                "component": "VTextField",
+                                "props": {
+                                    "model": "recovery_download_kb",
+                                    "label": "月初恢复全局下载限速 (KB/s)",
+                                    "type": "number",
+                                    "placeholder": "0",
+                                    "hint": "恢复时把全局下载限速设成该值；0=完全放开"
+                                }
+                            }]
+                        },
+                        {
+                            "component": "VCol",
+                            "props": {"cols": 12, "md": 12},
+                            "content": [{
+                                "component": "VTextField",
+                                "props": {
+                                    "model": "recovery_cron",
+                                    "label": "月初恢复触发时间 (Cron 表达式)",
+                                    "placeholder": "30 0 1 * *",
+                                    "hint": "默认每月1号00:30（30 0 1 * *）。可临时改成更频繁的值来测试恢复动作"
                                 }
                             }]
                         }
@@ -396,7 +449,10 @@ class DownloaderTraffic(_PluginBase):
             "downloaders": [],
             "upload_threshold_gb": 0,
             "limit_speed_kb": 0,
-            "recovery_speed_kb": 0
+            "limit_download_kb": 0,
+            "recovery_speed_kb": 0,
+            "recovery_download_kb": 0,
+            "recovery_cron": "30 0 1 * *"
         }
 
     # =====================================================================
@@ -405,13 +461,33 @@ class DownloaderTraffic(_PluginBase):
     def get_service(self) -> List[Dict[str, Any]]:
         if not self._enabled:
             return []
-        return [{
+        jobs = [{
             "id": "DownloaderTrafficCollect",
             "name": "下载器流量采集",
             "trigger": CronTrigger.from_crontab(self._cron),
             "func": self._collect,
             "kwargs": {}
         }]
+        # 月初恢复限速由独立定时任务驱动，触发时间可配置（默认每月1号00:30）
+        try:
+            jobs.append({
+                "id": "DownloaderTrafficRecovery",
+                "name": "月初恢复上传限速",
+                "trigger": CronTrigger.from_crontab(self._recovery_cron),
+                "func": self._scheduled_recovery,
+                "kwargs": {}
+            })
+        except Exception as e:  # pragma: no cover
+            logger.warning(f"下载器流量统计：月初恢复定时任务注册失败（cron={self._recovery_cron}）：{e}")
+        return jobs
+
+    def _scheduled_recovery(self):
+        """按配置的 cron 到点后，把所选下载器的上传/下载限速恢复到配置值。"""
+        self._do_apply_speed(
+            self._recovery_speed_kb,
+            self._recovery_download_kb,
+            reason=f"定时恢复限速（cron={self._recovery_cron}）",
+        )
 
     def get_command(self) -> List[Dict[str, Any]]:
         if EventType is None:
@@ -489,7 +565,7 @@ class DownloaderTraffic(_PluginBase):
                 "methods": ["POST", "GET"],
                 "auth": "bear",
                 "summary": "手动测试超限限速",
-                "description": "立即按「超限后全局上传限速」uniform_dl=0、upload=limit_speed_kb 对所选下载器设置，方便验证限速是否生效",
+                "description": "立即按「超限后上传/下载限速」(limit_speed_kb / limit_download_kb) 对所选下载器设置，方便验证限速是否生效",
             },
             {
                 "path": "/reset-limit",
@@ -497,7 +573,7 @@ class DownloaderTraffic(_PluginBase):
                 "methods": ["POST", "GET"],
                 "auth": "bear",
                 "summary": "手动恢复上传限速",
-                "description": "立即把全局上传限速设为「月初恢复限速」(recovery_speed_kb，0=不限)。用于手动测试月初 00:30 的恢复动作",
+                "description": "立即把全局上传/下载限速设为「月初恢复限速」(recovery_speed_kb / recovery_download_kb，0=不限)。用于手动测试月初恢复动作",
             },
         ]
 
@@ -619,18 +695,20 @@ class DownloaderTraffic(_PluginBase):
         return result
 
     def api_test_limit(self, request: Request):
-        """手动测试「超限限速」：按 limit_speed_kb 设置全局上传限速。"""
-        speed = self._limit_speed_kb
-        n = self._do_apply_limit(speed, reason="手动测试超限限速")
+        """手动测试「超限限速」：按 limit_speed_kb / limit_download_kb 设置全局限速。"""
+        up = self._limit_speed_kb
+        down = self._limit_download_kb
+        n = self._do_apply_speed(up, down, reason="手动测试超限限速")
         return {
             "ok": True,
             "applied_count": n,
-            "speed_kb": speed,
+            "upload_kb": up,
+            "download_kb": down,
             "reason": "test-limit",
         }
 
     def api_reset_limit(self, request: Request):
-        """手动恢复上传限速：把全局上传限速设为 recovery_speed_kb（0=不限）。"""
+        """手动恢复：把全局上传/下载限速设为 recovery_speed_kb / recovery_download_kb。"""
         reason = "手动触发"
         try:
             if request is not None:
@@ -648,16 +726,14 @@ class DownloaderTraffic(_PluginBase):
                     reason = str(body_reason)[:200]
         except Exception:
             pass
-        speed = self._recovery_speed_kb
-        n = self._do_apply_limit(speed, reason=reason)
-        ym = datetime.now().strftime("%Y-%m")
-        self._save_state("last_limit_reset_year_month", ym)
-        self._save_state("last_limit_reset_at", str(int(datetime.now().timestamp())))
+        up = self._recovery_speed_kb
+        down = self._recovery_download_kb
+        n = self._do_apply_speed(up, down, reason=reason)
         return {
             "ok": True,
             "reset_count": n,
-            "speed_kb": speed,
-            "year_month": ym,
+            "upload_kb": up,
+            "download_kb": down,
             "reason": reason,
         }
 
@@ -765,16 +841,15 @@ class DownloaderTraffic(_PluginBase):
 
         logger.info(f"下载器流量统计：本次共采集 {total_torrents} 个种子")
 
-        # 月度上传阈值限速检查
+        # 月度阈值限速检查
         self._maybe_apply_monthly_limit(month)
-        # 月初自动恢复（如果当前已处于限速、且到时间了）
-        self._maybe_reset_monthly_limit()
+        # 月初恢复限速由独立定时任务 DownloaderTrafficRecovery 驱动（见 get_service）
 
         logger.info("下载器流量统计：采集完成")
 
     def _maybe_apply_monthly_limit(self, month: str):
-        """当月累计上传达到阈值时，给所选下载器设置全局上传限速。"""
-        if self._upload_threshold_gb <= 0 or self._limit_speed_kb <= 0:
+        """当月累计上传达到阈值时，给所选下载器设置全局上传/下载限速。"""
+        if self._upload_threshold_gb <= 0 or (self._limit_speed_kb <= 0 and self._limit_download_kb <= 0):
             return
         if self._db is None:
             return
@@ -790,12 +865,13 @@ class DownloaderTraffic(_PluginBase):
 
         logger.warning(
             f"下载器流量统计：本月上传 {month_upload/1024**3:.2f} GB "
-            f"已达阈值 {self._upload_threshold_gb} GB，设置全局上传限速 {self._limit_speed_kb} KB/s"
+            f"已达阈值 {self._upload_threshold_gb} GB，设置全局上传限速 "
+            f"{self._limit_speed_kb} KB/s / 下载限速 {self._limit_download_kb} KB/s"
         )
-        self._do_apply_limit(self._limit_speed_kb, reason="月度阈值限速")
+        self._do_apply_speed(self._limit_speed_kb, self._limit_download_kb, reason="月度阈值限速")
 
     # =====================================================================
-    # 月初自动恢复限速
+    # 状态存取（保留；月初恢复现已由独立定时任务 DownloaderTrafficRecovery 驱动）
     # =====================================================================
     def _load_state(self, key: str, default: str = "") -> str:
         if not self._db:
@@ -827,32 +903,13 @@ class DownloaderTraffic(_PluginBase):
 
     def _maybe_reset_monthly_limit(self):
         """
-        在采集收尾时检查：是否到达「本月 1 号 00:30」。若是、且插件并未在本月已经恢复过，
-        则把所选下载器的全局上传限速设为 recovery_speed_kb（0=完全放开不限速）。
-
-        通过 plugin_state 表的 last_limit_reset_year_month 字段去重，避免重复推送。
+        已废弃：月初恢复限速改由配置的独立定时任务 DownloaderTrafficRecovery 驱动
+        （见 get_service / _scheduled_recovery），触发时间由 recovery_cron 配置。
         """
-        try:
-            # 没有启用限速功能 → 免谈
-            if self._upload_threshold_gb <= 0:
-                return
-            now = datetime.now()
-            ym = now.strftime("%Y-%m")
-            # 仅在今天是 1 号、且过了 00:30 时才触发（用户配置 "每月 1 号 00:30"）
-            is_window_open = now.day == 1 and (now.hour, now.minute) >= (0, 30)
-            if not is_window_open:
-                return
-            last_ym = self._load_state("last_limit_reset_year_month")
-            if last_ym == ym:
-                return  # 本月已恢复过，不再重复
-            self._do_apply_limit(self._recovery_speed_kb, reason="月初 00:30 自动恢复")
-            self._save_state("last_limit_reset_year_month", ym)
-            self._save_state("last_limit_reset_at", str(int(now.timestamp())))
-        except Exception as e:
-            logger.error(f"下载器流量统计：月初限速恢复检查失败：{e}")
+        return
 
-    def _do_apply_limit(self, speed_kb: int, reason: str = ""):
-        """对所有目标下载器设置全局上传限速 upload_limit=speed_kb（0=不限）。返回成功数。"""
+    def _do_apply_speed(self, up_kb: int, down_kb: int, reason: str = ""):
+        """对所有目标下载器设置全局限速：上传=up_kb、下载=down_kb（0=不限）。返回成功数。"""
         targets = self._downloaders or None
         helper = self._downloader_helper
         if helper is None and DownloaderHelper is not None:
@@ -868,18 +925,18 @@ class DownloaderTraffic(_PluginBase):
             return 0
         ok = []
         failed = []
+        desc = f"上传 {up_kb} KB/s / 下载 {down_kb} KB/s"
         for sname, sinfo in services.items():
             try:
                 if sinfo.instance.is_inactive():
                     failed.append(f"{sname}(离线)")
                     continue
-                sinfo.instance.set_speed_limit(download_limit=0, upload_limit=speed_kb)
+                sinfo.instance.set_speed_limit(download_limit=down_kb, upload_limit=up_kb)
                 ok.append(sname)
             except Exception as e:
                 failed.append(f"{sname}({e})")
-        action = f"恢复上传限速为 {speed_kb} KB/s" if speed_kb else "解除上传限速(不限速)"
         if ok:
-            logger.warning(f"下载器流量统计：{'，'.join(ok)} 已{action}"
+            logger.warning(f"下载器流量统计：{'，'.join(ok)} 已设置限速 {desc}"
                            f"{'，原因：' + reason if reason else ''}")
         if failed:
             logger.warning(f"下载器流量统计：以下下载器设置失败：{failed}")

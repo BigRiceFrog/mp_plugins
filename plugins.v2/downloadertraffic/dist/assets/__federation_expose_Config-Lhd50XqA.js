@@ -63,7 +63,10 @@ const local = ref({
   downloaders: [],
   upload_threshold_gb: 0,
   limit_speed_kb: 0,
+  limit_download_kb: 0,
   recovery_speed_kb: 0,
+  recovery_download_kb: 0,
+  recovery_cron: '30 0 1 * *',
 });
 
 const downloaderItems = ref([]);
@@ -100,7 +103,7 @@ async function doTestLimit() {
     const payload = r?.data ?? r;
     showAction(
       payload?.ok
-        ? `已按超限限速 ${payload.speed_kb ?? 0} KB/s 设置 ${payload.applied_count ?? 0} 个下载器`
+        ? `已按超限限速 上传${payload.upload_kb ?? 0}/下载${payload.download_kb ?? 0} KB/s 设置 ${payload.applied_count ?? 0} 个下载器`
         : `操作失败：${payload?.error || ''}`,
       !payload?.ok
     );
@@ -120,7 +123,7 @@ async function doReset() {
     const payload = r?.data ?? r;
     showAction(
       payload?.ok
-        ? `已按月初恢复限速 ${payload.speed_kb ?? 0} KB/s 设置 ${payload.reset_count ?? 0} 个下载器`
+        ? `已按恢复限速 上传${payload.upload_kb ?? 0}/下载${payload.download_kb ?? 0} KB/s 设置 ${payload.reset_count ?? 0} 个下载器`
         : `操作失败：${payload?.error || ''}`,
       !payload?.ok
     );
@@ -140,7 +143,10 @@ onMounted(async () => {
     downloaders: Array.isArray(dl) ? dl : ((dl || '').split(',').filter(Boolean)),
     upload_threshold_gb: c.upload_threshold_gb || 0,
     limit_speed_kb: c.limit_speed_kb || 0,
+    limit_download_kb: c.limit_download_kb || 0,
     recovery_speed_kb: c.recovery_speed_kb || 0,
+    recovery_download_kb: c.recovery_download_kb || 0,
+    recovery_cron: c.recovery_cron || '30 0 1 * *',
   };
 
   if (props.api && props.api.get) {
@@ -179,7 +185,7 @@ return (_ctx, _cache) => {
       color: "transparent"
     }, {
       default: _withCtx(() => [
-        _cache[7] || (_cache[7] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计 · 配置", -1)),
+        _cache[10] || (_cache[10] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计 · 配置", -1)),
         _createVNode(_component_VSpacer),
         _createVNode(_component_VBtn, {
           icon: "mdi-content-save",
@@ -218,7 +224,7 @@ return (_ctx, _cache) => {
           loading: collectBusy.value,
           onClick: doCollect
         }, {
-          default: _withCtx(() => [...(_cache[8] || (_cache[8] = [
+          default: _withCtx(() => [...(_cache[11] || (_cache[11] = [
             _createTextVNode("立即采集流量", -1)
           ]))]),
           _: 1
@@ -229,7 +235,7 @@ return (_ctx, _cache) => {
           loading: limitBusy.value,
           onClick: doTestLimit
         }, {
-          default: _withCtx(() => [...(_cache[9] || (_cache[9] = [
+          default: _withCtx(() => [...(_cache[12] || (_cache[12] = [
             _createTextVNode("测试限速", -1)
           ]))]),
           _: 1
@@ -240,7 +246,7 @@ return (_ctx, _cache) => {
           loading: resetBusy.value,
           onClick: doReset
         }, {
-          default: _withCtx(() => [...(_cache[10] || (_cache[10] = [
+          default: _withCtx(() => [...(_cache[13] || (_cache[13] = [
             _createTextVNode("测试月初恢复", -1)
           ]))]),
           _: 1
@@ -298,19 +304,53 @@ return (_ctx, _cache) => {
         placeholder: "0",
         class: "mt-3",
         variant: "outlined",
-        hint: "0=达到阈值也不限速",
+        hint: "0=达到阈值也不限上传",
         "persistent-hint": ""
       }, null, 8, ["modelValue"]),
       _createVNode(_component_VTextField, {
-        modelValue: local.value.recovery_speed_kb,
-        "onUpdate:modelValue": _cache[6] || (_cache[6] = $event => ((local.value.recovery_speed_kb) = $event)),
+        modelValue: local.value.limit_download_kb,
+        "onUpdate:modelValue": _cache[6] || (_cache[6] = $event => ((local.value.limit_download_kb) = $event)),
         modelModifiers: { number: true },
-        label: "月初恢复上传限速 (KB/s)",
+        label: "超限后全局下载限速 (KB/s)",
         type: "number",
         placeholder: "0",
         class: "mt-3",
         variant: "outlined",
-        hint: "每月 1 号 00:30 把全局上传限速设成该值（如 4096=4M/s）；0=完全放开不限速",
+        hint: "0=达到阈值也不限下载",
+        "persistent-hint": ""
+      }, null, 8, ["modelValue"]),
+      _createVNode(_component_VTextField, {
+        modelValue: local.value.recovery_speed_kb,
+        "onUpdate:modelValue": _cache[7] || (_cache[7] = $event => ((local.value.recovery_speed_kb) = $event)),
+        modelModifiers: { number: true },
+        label: "月初恢复全局上传限速 (KB/s)",
+        type: "number",
+        placeholder: "0",
+        class: "mt-3",
+        variant: "outlined",
+        hint: "恢复时把全局上传限速设成该值（如 4096=4M/s）；0=完全放开",
+        "persistent-hint": ""
+      }, null, 8, ["modelValue"]),
+      _createVNode(_component_VTextField, {
+        modelValue: local.value.recovery_download_kb,
+        "onUpdate:modelValue": _cache[8] || (_cache[8] = $event => ((local.value.recovery_download_kb) = $event)),
+        modelModifiers: { number: true },
+        label: "月初恢复全局下载限速 (KB/s)",
+        type: "number",
+        placeholder: "0",
+        class: "mt-3",
+        variant: "outlined",
+        hint: "恢复时把全局下载限速设成该值；0=完全放开",
+        "persistent-hint": ""
+      }, null, 8, ["modelValue"]),
+      _createVNode(_component_VTextField, {
+        modelValue: local.value.recovery_cron,
+        "onUpdate:modelValue": _cache[9] || (_cache[9] = $event => ((local.value.recovery_cron) = $event)),
+        label: "月初恢复触发时间 (Cron 表达式)",
+        placeholder: "30 0 1 * *",
+        class: "mt-3",
+        variant: "outlined",
+        hint: "默认每月1号00:30（30 0 1 * *）。可临时改成更频繁的值来测试恢复动作",
         "persistent-hint": ""
       }, null, 8, ["modelValue"])
     ])
