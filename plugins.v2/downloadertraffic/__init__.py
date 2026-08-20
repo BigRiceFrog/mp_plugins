@@ -74,33 +74,46 @@ _FIELD_ALIASES = {
 }
 
 
-def _field(obj: Any, *names: str, default: Any = None) -> Any:
-    """从对象或字典里按多个候选字段名取值。
+def _norm(s: Any) -> str:
+    """字段名归一化：转小写并去掉下划线/连字符，兼容 uploadedEver / uploaded_ever 等异构命名。"""
+    return str(s).lower().replace("_", "").replace("-", "")
 
-    依次尝试三种形态，覆盖各下载器客户端库的差异：
-      - dict            （qbittorrent-api 的 TorrentDictionary 等）
-      - 内部 _fields    （transmission-rpc 的 Torrent 把数据存在 _fields 字典里）
-      - 普通属性        （TorrentInformation 等）
+
+def _field(obj: Any, *names: str, default: Any = None) -> Any:
+    """从对象/字典里按多个候选字段名取值。
+
+    兼容各下载器客户端（dict / 内部 _fields 字典 / 普通属性），并使用「去分隔符+小写」的
+    归一化匹配，因此无论是 uploadedEver、uploaded_ever 还是 uploaded-ever 都能对上，
+    避免因字段命名差异读不到值（如 transmission-rpc 的 Torrent._fields）。
     """
     if obj is None:
         return default
-    # 1) dict 形态
+    target = {_norm(n) for n in names}
+
+    def _hit(v: Any) -> bool:
+        return v is not None
+
+    # 1) dict / 内部 _fields 字典（transmission-rpc 等把数据存在这里）
     if isinstance(obj, dict):
-        for name in names:
-            if name in obj and obj[name] is not None:
-                return obj[name]
-        return default
-    # 2) 内部 _fields 形态（transmission-rpc 等）
-    _fields = getattr(obj, "_fields", None)
-    if isinstance(_fields, dict):
-        for name in names:
-            if name in _fields and _fields[name] is not None:
-                return _fields[name]
-    # 3) 普通属性
-    for name in names:
-        val = getattr(obj, name, None)
-        if val is not None:
-            return val
+        mapping = obj
+    else:
+        mapping = getattr(obj, "_fields", None)
+    if isinstance(mapping, dict):
+        for k, v in mapping.items():
+            if _norm(k) in target and _hit(v):
+                return v
+
+    # 2) 普通属性：遍历对象属性，按归一化名匹配（任意命名）
+    if not isinstance(obj, dict):
+        for a in dir(obj):
+            if a.startswith("__") or _norm(a) not in target:
+                continue
+            try:
+                val = getattr(obj, a)
+            except Exception:  # pragma: no cover
+                continue
+            if _hit(val) and not callable(val):
+                return val
     return default
 
 
@@ -127,7 +140,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.3.2"
+    plugin_version = "1.3.3"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -657,11 +670,14 @@ class DownloaderTraffic(_PluginBase):
                         else:
                             keys = [a for a in dir(sample) if not a.startswith("_")][:60]
                         logger.info(f"下载器流量统计：种子字段样例({dtype})：{keys}")
+                        _sample_trackers = _field_multi(sample, "trackers", default=[]) or []
                         logger.info(
                             f"下载器流量统计：样本种子取值({dtype})："
                             f"hash={_field_multi(sample, 'hash')} "
                             f"uploaded={_field_multi(sample, 'uploaded')} "
-                            f"downloaded={_field_multi(sample, 'downloaded')}"
+                            f"downloaded={_field_multi(sample, 'downloaded')} "
+                            f"trackers={_sample_trackers} "
+                            f"site={self._resolve_site(_sample_trackers)}"
                         )
                     except Exception:
                         pass
@@ -882,6 +898,10 @@ class DownloaderTraffic(_PluginBase):
             f"下载器流量统计：{dtype} 本次入账 上传 {global_up/1024**3:.3f} GB / "
             f"下载 {global_down/1024**3:.3f} GB（种子数 {len(torrents)}）"
         )
+        if delta_by_site:
+            _dist = {k: f"U{v['up']/1024**3:.2f}G/D{v['down']/1024**3:.2f}G"
+                    for k, v in delta_by_site.items()}
+            logger.debug(f"下载器流量统计：{dtype} 站点分布 → {_dist}")
 
         # 写入 / 累加记录
         with self._db_lock:
