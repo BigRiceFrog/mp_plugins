@@ -408,7 +408,7 @@ return (_ctx, _cache) => {
           ? (_openBlock(), _createElementBlock("div", _hoisted_8, "暂无数据"))
           : (_openBlock(), _createElementBlock("svg", {
               key: 1,
-              width: barLabelW + barW + 20,
+              width: barLabelW + barW + 170,
               height: barSvgHeight.value,
               class: "dt-bars"
             }, [
@@ -556,6 +556,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-cb1d059e"]]);
+const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-a66c7408"]]);
 
 export { Page as default };

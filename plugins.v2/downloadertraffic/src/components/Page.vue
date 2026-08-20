@@ -280,7 +280,7 @@ const lineXLabels = computed(() => {
     <VCard class="dt-section" title="按 PT 站点细分">
       <template #text>
         <div v-if="siteRows.length === 0" class="text-medium-emphasis">暂无数据</div>
-        <svg v-else :width="barLabelW + barW + 20" :height="barSvgHeight" class="dt-bars">
+        <svg v-else :width="barLabelW + barW + 170" :height="barSvgHeight" class="dt-bars">
           <g v-for="(r, i) in siteRows" :key="r.site">
             <text :x="0" :y="i * (barH + barGap) + barH" class="dt-bar-label">{{ r.site }}</text>
             <!-- 上传 -->
