@@ -140,7 +140,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.3.3"
+    plugin_version = "1.3.4"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -918,36 +918,57 @@ class DownloaderTraffic(_PluginBase):
     def _resolve_site(self, trackers) -> str:
         if not trackers:
             return "未知站点"
-        domain = ""
+        host = ""
         for tr in trackers:
+            # dict：qbittorrent-api 的 tracker（url/host/site 键）
+            # 对象：transmission-rpc 的 Tracker，必须取真实 announce/url/host，不能 str()（会把内存地址当域名）
             url = ""
             if isinstance(tr, dict):
                 url = tr.get("url") or tr.get("host") or tr.get("site") or ""
             else:
-                url = str(tr)
-            domain = _extract_domain(url)
-            if domain:
+                url = _field(tr, "url", "announce", "host", "sitename", default="")
+            host = _extract_domain(url)
+            if host:
                 break
-        if not domain:
+        if not host:
             return "未知站点"
-        return self._map_domain_to_site(domain) or domain
+        # 优先映射成 MP 站点名；映射不上则退回可读的 tracker 域名
+        return self._map_domain_to_site(host) or host
 
-    def _map_domain_to_site(self, domain: str) -> Optional[str]:
-        """用 SitesHelper 把 tracker 域名映射成 PT 站点名。"""
+    def _map_domain_to_site(self, host: str) -> Optional[str]:
+        """用 SitesHelper 把 tracker 域名映射成 MP 里添加的 PT 站点名。
+
+        兼容 get_sites() 返回 dict({域名或id: 站点}) 或 list([站点, ...])，
+        且站点的 domain 字段可能是字符串/逗号分隔/列表三种形态。
+        """
         if self._sites_helper is None:
             return None
         try:
-            sites = self._sites_helper.get_sites() or {}
-            for site_domain, site in sites.items():
-                if not site_domain:
+            raw = self._sites_helper.get_sites() or []
+            # 归一化成 list[dict]
+            if isinstance(raw, dict):
+                site_list = list(raw.values())
+            else:
+                site_list = list(raw)
+            for site in site_list:
+                if isinstance(site, dict):
+                    name = site.get("name") or ""
+                    dom = site.get("domain") or site.get("url") or ""
+                else:
+                    name = getattr(site, "name", None) or ""
+                    dom = getattr(site, "domain", None) or getattr(site, "url", "") or ""
+                if not name:
                     continue
-                sd = site_domain.lower().replace("https://", "").replace("http://", "")
-                sd = sd.split("/")[0]
-                # 域名匹配（站点域名包含于 tracker 域名，或反之）
-                if sd and (sd in domain or domain in sd):
-                    name = getattr(site, "name", None) or site_domain
-                    return name
-        except Exception as e:
+                # domain 可能是列表或逗号分隔字符串
+                if isinstance(dom, str):
+                    doms = [d for d in dom.replace("，", ",").split(",") if d]
+                else:
+                    doms = list(dom or [])
+                for sd in doms:
+                    sd = _extract_domain(str(sd))
+                    if sd and (sd in host or host in sd):
+                        return name
+        except Exception as e:  # pragma: no cover
             logger.debug(f"下载器流量统计：站点映射失败 {e}")
         return None
 
