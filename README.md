@@ -48,3 +48,15 @@
   2. 仓库根 `package.json` / `package.v2.json` 中对应插件的 `version` 字段（MoviePilot 实际读取的是这一处），并同步追加 `history` 变更说明。
   > 踩坑：曾只改了 `plugin_version` 而漏改 `package.v2.json`，导致 MP 长时间显示旧版本。
 - 插件 API 路由在安装 / 更新后需**重启 MoviePilot** 才会重新注册；详情页 404、设置页下拉为空时优先排查是否未重启。
+
+## 版本兼容性（V2 / V3）
+
+本仓库三款插件同时兼容 MoviePilot **V2 与 V3**，采用官方推荐的“单一实现 + 默认兼容”方式，不额外维护 `plugins.v3/` 副本：
+
+- MoviePilot V3 对插件为默认向后兼容。宿主优先读取 `package.v3.json`（本仓库不存在该文件），无条目时**自动回退加载未声明 `v3:false` 的 V2 实现**（即 `plugins.v2/` + `package.v2.json`）。因此 V3 市场可直接看到并安装本仓库插件，无需重复代码或标签。
+- 三款插件主类均继承 `app.plugins._PluginBase`，该路径在 V2、V3 均为规范写法；其余旧导入（`app.core.config`、`app.core.event`、`app.helper.downloader`、`app.db.site_oper` 等）由 V3 兼容层登记映射；`app.chain.storage`（清理媒体文件用）在 V3 源码仍存在。故无需为 V3 改动任何插件代码。
+- 依赖新增由 V3 化宿主能力时才需要同步建 `plugins.v3/` 副本并标 `v3:false`；当前三款均不涉及，故保持现状。
+
+**在 V3 环境上线前建议验证的两处**（仅 V3 实机才能最终确认，不影响 V2）：
+1. `清理媒体文件（Jellyfin修复版）` 内的媒体库/存储链调用在新分层下的行为；
+2. `下载器流量统计` 的 Vue 联邦详情页（`dist/assets` 产物为 V2 前端构建）在 V3 前端联邦加载是否正常；其 `app.helper.sites` 在 V3 无此模块，已由代码 try/except 兜底、站点映射仍走 `SiteOper`，仅为次要来源降级。
