@@ -12,7 +12,7 @@ const _hoisted_3 = {
   key: 0,
   class: "mb-3"
 };
-const _hoisted_4 = { class: "d-flex ga-2 mb-3" };
+const _hoisted_4 = { class: "d-flex ga-2 mb-3 flex-wrap" };
 
 const {ref,computed,onMounted} = await importShared('vue');
 
@@ -63,13 +63,19 @@ const local = ref({
   downloaders: [],
   upload_threshold_gb: 0,
   limit_speed_kb: 0,
+  recovery_speed_kb: 0,
 });
 
 const downloaderItems = ref([]);
 const loadingItems = ref(false);
 const collectBusy = ref(false);
+const limitBusy = ref(false);
 const resetBusy = ref(false);
 const actionMsg = ref('');
+
+function showAction(msg, isError = false) {
+  actionMsg.value = isError ? msg : `✅ ${msg}`;
+}
 
 async function doCollect() {
   collectBusy.value = true;
@@ -77,25 +83,49 @@ async function doCollect() {
   try {
     const r = await props.api.get(`${base.value}/collect`);
     const payload = r?.data ?? r;
-    actionMsg.value = payload?.ok ? '已触发采集，可稍后打开详情页查看' : `采集失败：${payload?.error || ''}`;
+    showAction(payload?.ok ? '已触发采集，可稍后打开详情页查看' : `采集失败：${payload?.error || ''}`, !payload?.ok);
   } catch (e) {
-    actionMsg.value = `采集请求失败：${e?.message || e}`;
+    showAction(`采集请求失败：${e?.message || e}`, true);
   } finally {
     collectBusy.value = false;
   }
 }
 
+// 测试「超限限速」：按 limit_speed_kb 限速
+async function doTestLimit() {
+  limitBusy.value = true;
+  actionMsg.value = '';
+  try {
+    const r = await props.api.post(`${base.value}/test-limit`);
+    const payload = r?.data ?? r;
+    showAction(
+      payload?.ok
+        ? `已按超限限速 ${payload.speed_kb ?? 0} KB/s 设置 ${payload.applied_count ?? 0} 个下载器`
+        : `操作失败：${payload?.error || ''}`,
+      !payload?.ok
+    );
+  } catch (e) {
+    showAction(`请求失败：${e?.message || e}`, true);
+  } finally {
+    limitBusy.value = false;
+  }
+}
+
+// 测试「月初恢复」：按 recovery_speed_kb 恢复限速
 async function doReset() {
   resetBusy.value = true;
   actionMsg.value = '';
   try {
     const r = await props.api.post(`${base.value}/reset-limit`);
     const payload = r?.data ?? r;
-    actionMsg.value = payload?.ok
-      ? `已解除 ${payload.reset_count ?? 0} 个下载器的上传限速`
-      : `解除失败：${payload?.error || ''}`;
+    showAction(
+      payload?.ok
+        ? `已按月初恢复限速 ${payload.speed_kb ?? 0} KB/s 设置 ${payload.reset_count ?? 0} 个下载器`
+        : `操作失败：${payload?.error || ''}`,
+      !payload?.ok
+    );
   } catch (e) {
-    actionMsg.value = `解除请求失败：${e?.message || e}`;
+    showAction(`请求失败：${e?.message || e}`, true);
   } finally {
     resetBusy.value = false;
   }
@@ -110,6 +140,7 @@ onMounted(async () => {
     downloaders: Array.isArray(dl) ? dl : ((dl || '').split(',').filter(Boolean)),
     upload_threshold_gb: c.upload_threshold_gb || 0,
     limit_speed_kb: c.limit_speed_kb || 0,
+    recovery_speed_kb: c.recovery_speed_kb || 0,
   };
 
   if (props.api && props.api.get) {
@@ -148,7 +179,7 @@ return (_ctx, _cache) => {
       color: "transparent"
     }, {
       default: _withCtx(() => [
-        _cache[6] || (_cache[6] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计 · 配置", -1)),
+        _cache[7] || (_cache[7] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计 · 配置", -1)),
         _createVNode(_component_VSpacer),
         _createVNode(_component_VBtn, {
           icon: "mdi-content-save",
@@ -187,19 +218,30 @@ return (_ctx, _cache) => {
           loading: collectBusy.value,
           onClick: doCollect
         }, {
-          default: _withCtx(() => [...(_cache[7] || (_cache[7] = [
+          default: _withCtx(() => [...(_cache[8] || (_cache[8] = [
             _createTextVNode("立即采集流量", -1)
           ]))]),
           _: 1
         }, 8, ["loading"]),
         _createVNode(_component_VBtn, {
-          color: "warning",
+          color: "error",
+          variant: "tonal",
+          loading: limitBusy.value,
+          onClick: doTestLimit
+        }, {
+          default: _withCtx(() => [...(_cache[9] || (_cache[9] = [
+            _createTextVNode("测试限速", -1)
+          ]))]),
+          _: 1
+        }, 8, ["loading"]),
+        _createVNode(_component_VBtn, {
+          color: "success",
           variant: "tonal",
           loading: resetBusy.value,
           onClick: doReset
         }, {
-          default: _withCtx(() => [...(_cache[8] || (_cache[8] = [
-            _createTextVNode("立即解除限速", -1)
+          default: _withCtx(() => [...(_cache[10] || (_cache[10] = [
+            _createTextVNode("测试月初恢复", -1)
           ]))]),
           _: 1
         }, 8, ["loading"])
@@ -257,6 +299,18 @@ return (_ctx, _cache) => {
         class: "mt-3",
         variant: "outlined",
         hint: "0=达到阈值也不限速",
+        "persistent-hint": ""
+      }, null, 8, ["modelValue"]),
+      _createVNode(_component_VTextField, {
+        modelValue: local.value.recovery_speed_kb,
+        "onUpdate:modelValue": _cache[6] || (_cache[6] = $event => ((local.value.recovery_speed_kb) = $event)),
+        modelModifiers: { number: true },
+        label: "月初恢复上传限速 (KB/s)",
+        type: "number",
+        placeholder: "0",
+        class: "mt-3",
+        variant: "outlined",
+        hint: "每月 1 号 00:30 把全局上传限速设成该值（如 4096=4M/s）；0=完全放开不限速",
         "persistent-hint": ""
       }, null, 8, ["modelValue"])
     ])
