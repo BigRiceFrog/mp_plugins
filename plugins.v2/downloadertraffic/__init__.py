@@ -162,7 +162,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.3.6"
+    plugin_version = "1.3.7"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -209,6 +209,8 @@ class DownloaderTraffic(_PluginBase):
             self._limit_speed_kb = 0
         self.__init_db()
         self._cleanup_bad_site_rows()
+        self._migrate_site_rows()
+        self._log_mapping_diag()
         # 启动诊断：打印实例类型供排查 plugin_id（MP 用 plugin.__name__ 当 id）
         try:
             cls_name = type(self).__name__
@@ -1081,6 +1083,73 @@ class DownloaderTraffic(_PluginBase):
                     logger.warning(f"下载器流量统计：已清理 {cur.rowcount} 行非法站点名残留数据")
         except Exception as e:  # pragma: no cover
             logger.debug(f"下载器流量统计：清理残留数据失败 {e}")
+
+    def _migrate_site_rows(self):
+        """把历史误标记的站点桶合并/清理成 MP 站点名。
+
+        站点名是 traffic_records 主键的一部分，改映射后旧桶不会自动改名，会继续显示
+        t.hdhome.org / h / 未知站点 这些历史行。这里把「域名样」的桶重映射到 MP 站点名，
+        无法归并的（单字符、未知站点）直接删除；GLOBAL 汇总行保留真实总量。
+        """
+        if self._db is None:
+            return
+        try:
+            with self._db_lock:
+                sites = [r[0] for r in self._db.execute(
+                    "SELECT DISTINCT site FROM traffic_records") if r[0]]
+            for s in sites:
+                if not s or s == "GLOBAL":
+                    continue
+                if "." in s:  # 域名样（tracker 地址）
+                    mapped = self._map_domain_to_site(s)
+                    if mapped and mapped != s:
+                        self._merge_site_rows(s, mapped)
+                    else:
+                        self._delete_site_rows(s, "未识别的 tracker 域名")
+                elif len(s) <= 1 or s == "未知站点":
+                    self._delete_site_rows(s, "未知/非法站点名")
+        except Exception as e:  # pragma: no cover
+            logger.debug(f"下载器流量统计：历史站点名迁移失败 {e}")
+
+    def _merge_site_rows(self, old: str, new: str):
+        """把某个旧站点名下的所有记录合并进新站点名（累加）。"""
+        with self._db_lock:
+            rows = self._db.execute(
+                "SELECT date, year, month, downloader, uploaded, downloaded "
+                "FROM traffic_records WHERE site=?"
+            ).fetchall()
+            self._db.execute("DELETE FROM traffic_records WHERE site=?", (old,))
+            for r in rows:
+                self._upsert_record(r[0], r[1], r[2], new, r[3], r[4], r[5],
+                                    int(datetime.now().timestamp()))
+            self._db.commit()
+            if rows:
+                logger.warning(f"下载器流量统计：站点 {old} → {new}（合并 {len(rows)} 行）")
+
+    def _delete_site_rows(self, s: str, reason: str):
+        with self._db_lock:
+            cur = self._db.execute("DELETE FROM traffic_records WHERE site=?", (s,))
+            self._db.commit()
+            if cur.rowcount:
+                logger.warning(f"下载器流量统计：清理站点「{s}」({reason}) {cur.rowcount} 行；GLOBAL 汇总不失真")
+
+    def _log_mapping_diag(self):
+        """打印站点映射诊断：DB 是否可读、配置了几个站点、库里现存哪些站点名。"""
+        try:
+            names = [n for n, _ in self._iter_site_mappings() if n]
+            logger.info(
+                f"下载器流量统计：站点映射诊断——可用站点 {len(names)} 个：{names[:10]}"
+            )
+        except Exception as e:  # pragma: no cover
+            logger.info(f"下载器流量统计：站点映射诊断异常 {e}")
+        try:
+            with self._db_lock:
+                sites = [r[0] for r in self._db.execute(
+                    "SELECT DISTINCT site FROM traffic_records") if r[0]]
+            logger.info(f"下载器流量统计：当前库内站点名：{sites}")
+        except Exception:  # pragma: no cover
+            pass
+
     def _upsert_record(self, date_str, year, month, site, dtype, up, down, ts):
         with self._db_lock:
             self._db.execute(
