@@ -140,7 +140,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.3.4"
+    plugin_version = "1.3.5"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -186,6 +186,7 @@ class DownloaderTraffic(_PluginBase):
         except (ValueError, TypeError):
             self._limit_speed_kb = 0
         self.__init_db()
+        self._cleanup_bad_site_rows()
         # 启动诊断：打印实例类型供排查 plugin_id（MP 用 plugin.__name__ 当 id）
         try:
             cls_name = type(self).__name__
@@ -466,12 +467,12 @@ class DownloaderTraffic(_PluginBase):
         downloader = params.get("downloader")
         if period == "year":
             value = params.get("value") or str(datetime.now().year)
-            sql = "SELECT month, SUM(uploaded), SUM(downloaded) FROM traffic_records WHERE year=?"
+            sql = "SELECT month, SUM(uploaded), SUM(downloaded) FROM traffic_records WHERE year=? AND site='GLOBAL' "
             args: List[Any] = [int(value)]
             label = "month"
         else:  # month（默认）
             value = params.get("value") or datetime.now().strftime("%Y-%m")
-            sql = "SELECT date, SUM(uploaded), SUM(downloaded) FROM traffic_records WHERE month=?"
+            sql = "SELECT date, SUM(uploaded), SUM(downloaded) FROM traffic_records WHERE month=? AND site='GLOBAL' "
             args = [value]
             label = "date"
         if downloader:
@@ -519,6 +520,10 @@ class DownloaderTraffic(_PluginBase):
             sql += " AND downloader=?"
             args.append(downloader)
 
+        # GLOBAL 是供总览/限速使用的汇总行，并非真实站点：站点明细里剔掉，
+        # 避免「GLOBAL 总额 + 各站点之和」被重复计入 total。
+        sql += " AND site!='GLOBAL' "
+
         sql += " GROUP BY site, downloader ORDER BY site"
 
         with self._db_lock:
@@ -531,6 +536,7 @@ class DownloaderTraffic(_PluginBase):
                 "downloaded": int(r[3] or 0)
             } for r in cur.fetchall()]
 
+        # 总量 = 各真实站点之和（与 GLOBAL 行一致），不再重复
         return {
             "period": period,
             "value": value,
@@ -834,16 +840,18 @@ class DownloaderTraffic(_PluginBase):
             return 0
         with self._db_lock:
             try:
+                # 只统计 GLOBAL 汇总行，避免与站点行重复计算导致阈值虚高
                 if downloader_names:
                     placeholders = ",".join("?" * len(downloader_names))
                     cur = self._db.execute(
                         f"SELECT COALESCE(SUM(uploaded),0) FROM traffic_records "
-                        f"WHERE month=? AND downloader IN ({placeholders})",
+                        f"WHERE month=? AND site='GLOBAL' AND downloader IN ({placeholders})",
                         [month] + list(downloader_names)
                     )
                 else:
                     cur = self._db.execute(
-                        "SELECT COALESCE(SUM(uploaded),0) FROM traffic_records WHERE month=?",
+                        "SELECT COALESCE(SUM(uploaded),0) FROM traffic_records "
+                        "WHERE month=? AND site='GLOBAL'",
                         [month]
                     )
                 return int(cur.fetchone()[0] or 0)
@@ -928,6 +936,10 @@ class DownloaderTraffic(_PluginBase):
             else:
                 url = _field(tr, "url", "announce", "host", "sitename", default="")
             host = _extract_domain(url)
+            # 兜底：若解析结果仍是对象内存地址/对象 repr，视为无效
+            if host and (host.startswith("<") or "object at" in host or host.startswith("0x")):
+                host = ""
+                continue
             if host:
                 break
         if not host:
@@ -1010,6 +1022,21 @@ class DownloaderTraffic(_PluginBase):
         """)
         self._db.commit()
 
+    def _cleanup_bad_site_rows(self):
+        """清理历史 bug 期间把 tracker 对象内存地址当站点名写入的残留行。"""
+        if self._db is None:
+            return
+        try:
+            with self._db_lock:
+                cur = self._db.execute(
+                    "DELETE FROM traffic_records WHERE site LIKE '<%' "
+                    "OR site LIKE '%object at 0x%' OR site LIKE '0x%'",
+                )
+                self._db.commit()
+                if cur.rowcount:
+                    logger.warning(f"下载器流量统计：已清理 {cur.rowcount} 行非法站点名残留数据")
+        except Exception as e:  # pragma: no cover
+            logger.debug(f"下载器流量统计：清理残留数据失败 {e}")
     def _upsert_record(self, date_str, year, month, site, dtype, up, down, ts):
         with self._db_lock:
             self._db.execute(
