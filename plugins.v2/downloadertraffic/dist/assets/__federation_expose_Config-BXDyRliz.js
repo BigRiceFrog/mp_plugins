@@ -1,6 +1,6 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
 
-const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode} = await importShared('vue');
+const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,withKeys:_withKeys} = await importShared('vue');
 
 
 const _hoisted_1 = { class: "dt-config" };
@@ -67,6 +67,7 @@ const local = ref({
   recovery_speed_kb: 0,
   recovery_download_kb: 0,
   recovery_cron: '30 0 1 * *',
+  retention_days: 90,
 });
 
 const downloaderItems = ref([]);
@@ -75,6 +76,11 @@ const collectBusy = ref(false);
 const limitBusy = ref(false);
 const resetBusy = ref(false);
 const actionMsg = ref('');
+// 清空历史数据：二次确认对话框
+const clearDialog = ref(false);
+const clearInput = ref('');
+const clearBusy = ref(false);
+const clearOk = computed(() => clearInput.value.trim() === '清空');
 
 function showAction(msg, isError = false) {
   actionMsg.value = isError ? msg : `✅ ${msg}`;
@@ -134,6 +140,35 @@ async function doReset() {
   }
 }
 
+// 清空历史数据 —— 二次确认：先弹框，须输入「清空」才能执行
+function openClearDialog() {
+  clearInput.value = '';
+  clearDialog.value = true;
+}
+function closeClearDialog() {
+  clearDialog.value = false;
+  clearInput.value = '';
+}
+async function doClear() {
+  clearBusy.value = true;
+  actionMsg.value = '';
+  try {
+    const r = await props.api.post(`${base.value}/clear`);
+    const payload = r?.data ?? r;
+    if (payload?.ok) {
+      showAction(`已清空历史数据（records ${payload.deleted_records ?? 0} / snapshots ${payload.deleted_snapshots ?? 0}），下次采集重新入账`);
+      clearDialog.value = false;
+    } else {
+      showAction(`清空失败：${payload?.error || ''}`, true);
+    }
+  } catch (e) {
+    showAction(`请求失败：${e?.message || e}`, true);
+  } finally {
+    clearBusy.value = false;
+    clearInput.value = '';
+  }
+}
+
 onMounted(async () => {
   const c = props.initialConfig || {};
   const dl = c.downloaders;
@@ -147,6 +182,7 @@ onMounted(async () => {
     recovery_speed_kb: c.recovery_speed_kb || 0,
     recovery_download_kb: c.recovery_download_kb || 0,
     recovery_cron: c.recovery_cron || '30 0 1 * *',
+    retention_days: c.retention_days ?? 90,
   };
 
   if (props.api && props.api.get) {
@@ -178,6 +214,11 @@ return (_ctx, _cache) => {
   const _component_VSwitch = _resolveComponent("VSwitch");
   const _component_VTextField = _resolveComponent("VTextField");
   const _component_VSelect = _resolveComponent("VSelect");
+  const _component_VCardTitle = _resolveComponent("VCardTitle");
+  const _component_VCardText = _resolveComponent("VCardText");
+  const _component_VCardActions = _resolveComponent("VCardActions");
+  const _component_VCard = _resolveComponent("VCard");
+  const _component_VDialog = _resolveComponent("VDialog");
 
   return (_openBlock(), _createElementBlock("div", _hoisted_1, [
     _createVNode(_component_VToolbar, {
@@ -185,7 +226,7 @@ return (_ctx, _cache) => {
       color: "transparent"
     }, {
       default: _withCtx(() => [
-        _cache[10] || (_cache[10] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计 · 配置", -1)),
+        _cache[14] || (_cache[14] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计 · 配置", -1)),
         _createVNode(_component_VSpacer),
         _createVNode(_component_VBtn, {
           icon: "mdi-content-save",
@@ -224,7 +265,7 @@ return (_ctx, _cache) => {
           loading: collectBusy.value,
           onClick: doCollect
         }, {
-          default: _withCtx(() => [...(_cache[11] || (_cache[11] = [
+          default: _withCtx(() => [...(_cache[15] || (_cache[15] = [
             _createTextVNode("立即采集流量", -1)
           ]))]),
           _: 1
@@ -235,7 +276,7 @@ return (_ctx, _cache) => {
           loading: limitBusy.value,
           onClick: doTestLimit
         }, {
-          default: _withCtx(() => [...(_cache[12] || (_cache[12] = [
+          default: _withCtx(() => [...(_cache[16] || (_cache[16] = [
             _createTextVNode("测试限速", -1)
           ]))]),
           _: 1
@@ -246,11 +287,22 @@ return (_ctx, _cache) => {
           loading: resetBusy.value,
           onClick: doReset
         }, {
-          default: _withCtx(() => [...(_cache[13] || (_cache[13] = [
+          default: _withCtx(() => [...(_cache[17] || (_cache[17] = [
             _createTextVNode("测试月初恢复", -1)
           ]))]),
           _: 1
-        }, 8, ["loading"])
+        }, 8, ["loading"]),
+        _createVNode(_component_VBtn, {
+          color: "error",
+          variant: "text",
+          density: "comfortable",
+          onClick: openClearDialog
+        }, {
+          default: _withCtx(() => [...(_cache[18] || (_cache[18] = [
+            _createTextVNode("清空历史数据", -1)
+          ]))]),
+          _: 1
+        })
       ]),
       _createVNode(_component_VSwitch, {
         modelValue: local.value.enabled,
@@ -352,8 +404,96 @@ return (_ctx, _cache) => {
         variant: "outlined",
         hint: "默认每月1号00:30（30 0 1 * *）。可临时改成更频繁的值来测试恢复动作",
         "persistent-hint": ""
+      }, null, 8, ["modelValue"]),
+      _createVNode(_component_VTextField, {
+        modelValue: local.value.retention_days,
+        "onUpdate:modelValue": _cache[10] || (_cache[10] = $event => ((local.value.retention_days) = $event)),
+        modelModifiers: { number: true },
+        label: "历史数据保留天数 (天)",
+        type: "number",
+        placeholder: "90",
+        class: "mt-3",
+        variant: "outlined",
+        hint: "每次采集自动删除超过该天数的历史记录；0=不自动清理。建议 90~180 天",
+        "persistent-hint": ""
       }, null, 8, ["modelValue"])
-    ])
+    ]),
+    _createVNode(_component_VDialog, {
+      modelValue: clearDialog.value,
+      "onUpdate:modelValue": _cache[13] || (_cache[13] = $event => ((clearDialog).value = $event)),
+      "max-width": "440",
+      persistent: ""
+    }, {
+      default: _withCtx(() => [
+        _createVNode(_component_VCard, null, {
+          default: _withCtx(() => [
+            _createVNode(_component_VCardTitle, { class: "text-error" }, {
+              default: _withCtx(() => [...(_cache[19] || (_cache[19] = [
+                _createTextVNode("清空全部历史数据？", -1)
+              ]))]),
+              _: 1
+            }),
+            _createVNode(_component_VCardText, null, {
+              default: _withCtx(() => [
+                _cache[20] || (_cache[20] = _createElementVNode("p", null, [
+                  _createTextVNode("此操作将"),
+                  _createElementVNode("strong", null, "永久删除"),
+                  _createTextVNode("插件已采集的所有历史流量记录（含种子基准快照），"),
+                  _createElementVNode("strong", null, "不可恢复"),
+                  _createTextVNode("。")
+                ], -1)),
+                _cache[21] || (_cache[21] = _createElementVNode("p", null, [
+                  _createTextVNode("清空后，下一次采集会以各种子当前累计值为基准"),
+                  _createElementVNode("strong", null, "重新入账"),
+                  _createTextVNode("。")
+                ], -1)),
+                _createVNode(_component_VTextField, {
+                  modelValue: clearInput.value,
+                  "onUpdate:modelValue": _cache[11] || (_cache[11] = $event => ((clearInput).value = $event)),
+                  label: "请输入「清空」以确认",
+                  variant: "outlined",
+                  dense: "",
+                  class: "mt-2",
+                  disabled: clearBusy.value,
+                  onKeyup: _cache[12] || (_cache[12] = _withKeys($event => (clearOk.value && !clearBusy.value && doClear()), ["enter"]))
+                }, null, 8, ["modelValue", "disabled"])
+              ]),
+              _: 1
+            }),
+            _createVNode(_component_VCardActions, null, {
+              default: _withCtx(() => [
+                _createVNode(_component_VSpacer),
+                _createVNode(_component_VBtn, {
+                  variant: "text",
+                  disabled: clearBusy.value,
+                  onClick: closeClearDialog
+                }, {
+                  default: _withCtx(() => [...(_cache[22] || (_cache[22] = [
+                    _createTextVNode("取消", -1)
+                  ]))]),
+                  _: 1
+                }, 8, ["disabled"]),
+                _createVNode(_component_VBtn, {
+                  color: "error",
+                  variant: "tonal",
+                  disabled: !clearOk.value,
+                  loading: clearBusy.value,
+                  onClick: doClear
+                }, {
+                  default: _withCtx(() => [...(_cache[23] || (_cache[23] = [
+                    _createTextVNode("确认清空", -1)
+                  ]))]),
+                  _: 1
+                }, 8, ["disabled", "loading"])
+              ]),
+              _: 1
+            })
+          ]),
+          _: 1
+        })
+      ]),
+      _: 1
+    }, 8, ["modelValue"])
   ]))
 }
 }

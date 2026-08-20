@@ -44,6 +44,7 @@ const local = ref({
   recovery_speed_kb: 0,
   recovery_download_kb: 0,
   recovery_cron: '30 0 1 * *',
+  retention_days: 90,
 })
 
 const downloaderItems = ref([])
@@ -52,6 +53,11 @@ const collectBusy = ref(false)
 const limitBusy = ref(false)
 const resetBusy = ref(false)
 const actionMsg = ref('')
+// 清空历史数据：二次确认对话框
+const clearDialog = ref(false)
+const clearInput = ref('')
+const clearBusy = ref(false)
+const clearOk = computed(() => clearInput.value.trim() === '清空')
 
 function showAction(msg, isError = false) {
   actionMsg.value = isError ? msg : `✅ ${msg}`
@@ -111,6 +117,35 @@ async function doReset() {
   }
 }
 
+// 清空历史数据 —— 二次确认：先弹框，须输入「清空」才能执行
+function openClearDialog() {
+  clearInput.value = ''
+  clearDialog.value = true
+}
+function closeClearDialog() {
+  clearDialog.value = false
+  clearInput.value = ''
+}
+async function doClear() {
+  clearBusy.value = true
+  actionMsg.value = ''
+  try {
+    const r = await props.api.post(`${base.value}/clear`)
+    const payload = r?.data ?? r
+    if (payload?.ok) {
+      showAction(`已清空历史数据（records ${payload.deleted_records ?? 0} / snapshots ${payload.deleted_snapshots ?? 0}），下次采集重新入账`)
+      clearDialog.value = false
+    } else {
+      showAction(`清空失败：${payload?.error || ''}`, true)
+    }
+  } catch (e) {
+    showAction(`请求失败：${e?.message || e}`, true)
+  } finally {
+    clearBusy.value = false
+    clearInput.value = ''
+  }
+}
+
 onMounted(async () => {
   const c = props.initialConfig || {}
   const dl = c.downloaders
@@ -124,6 +159,7 @@ onMounted(async () => {
     recovery_speed_kb: c.recovery_speed_kb || 0,
     recovery_download_kb: c.recovery_download_kb || 0,
     recovery_cron: c.recovery_cron || '30 0 1 * *',
+    retention_days: c.retention_days ?? 90,
   }
 
   if (props.api && props.api.get) {
@@ -181,6 +217,12 @@ function save() {
           :loading="resetBusy"
           @click="doReset"
         >测试月初恢复</VBtn>
+        <VBtn
+          color="error"
+          variant="text"
+          density="comfortable"
+          @click="openClearDialog"
+        >清空历史数据</VBtn>
       </div>
       <VSwitch v-model="local.enabled" label="启用插件" color="primary" hide-details />
       <VTextField
@@ -264,6 +306,46 @@ function save() {
         hint="默认每月1号00:30（30 0 1 * *）。可临时改成更频繁的值来测试恢复动作"
         persistent-hint
       />
+      <VTextField
+        v-model.number="local.retention_days"
+        label="历史数据保留天数 (天)"
+        type="number"
+        placeholder="90"
+        class="mt-3"
+        variant="outlined"
+        hint="每次采集自动删除超过该天数的历史记录；0=不自动清理。建议 90~180 天"
+        persistent-hint
+      />
     </div>
+
+    <VDialog v-model="clearDialog" max-width="440" persistent>
+      <VCard>
+        <VCardTitle class="text-error">清空全部历史数据？</VCardTitle>
+        <VCardText>
+          <p>此操作将<strong>永久删除</strong>插件已采集的所有历史流量记录（含种子基准快照），<strong>不可恢复</strong>。</p>
+          <p>清空后，下一次采集会以各种子当前累计值为基准<strong>重新入账</strong>。</p>
+          <VTextField
+            v-model="clearInput"
+            label="请输入「清空」以确认"
+            variant="outlined"
+            dense
+            class="mt-2"
+            :disabled="clearBusy"
+            @keyup.enter="clearOk && !clearBusy && doClear()"
+          />
+        </VCardText>
+        <VCardActions>
+          <VSpacer />
+          <VBtn variant="text" :disabled="clearBusy" @click="closeClearDialog">取消</VBtn>
+          <VBtn
+            color="error"
+            variant="tonal"
+            :disabled="!clearOk"
+            :loading="clearBusy"
+            @click="doClear"
+          >确认清空</VBtn>
+        </VCardActions>
+      </VCard>
+    </VDialog>
   </div>
 </template>

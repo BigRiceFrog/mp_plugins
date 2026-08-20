@@ -168,7 +168,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.0.0"
+    plugin_version = "1.0.1"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -187,6 +187,7 @@ class DownloaderTraffic(_PluginBase):
     _recovery_speed_kb: int = 0          # 月初恢复到的上传限速（KB/s），0 = 完全放开不限速
     _recovery_download_kb: int = 0       # 月初恢复到的下载限速（KB/s），0 = 完全放开不限速
     _recovery_cron: str = "30 0 1 * *"   # 月初恢复触发时间（Cron，默认每月1号00:30）
+    _retention_days: int = 90            # 历史数据保留天数（天），0 = 不自动清理
     _db: Optional[sqlite3.Connection] = None
     _db_lock: Optional[threading.RLock] = None
     _downloader_helper: Optional[DownloaderHelper] = None
@@ -230,6 +231,10 @@ class DownloaderTraffic(_PluginBase):
         except (ValueError, TypeError):
             self._recovery_download_kb = 0
         self._recovery_cron = str(config.get("recovery_cron") or "30 0 1 * *")
+        try:
+            self._retention_days = int(config.get("retention_days") or 90)
+        except (ValueError, TypeError):
+            self._retention_days = 90
         self.__init_db()
         self._cleanup_bad_site_rows()
         self._migrate_site_rows()
@@ -439,6 +444,20 @@ class DownloaderTraffic(_PluginBase):
                                     "hint": "默认每月1号00:30（30 0 1 * *）。可临时改成更频繁的值来测试恢复动作"
                                 }
                             }]
+                        },
+                        {
+                            "component": "VCol",
+                            "props": {"cols": 12, "md": 12},
+                            "content": [{
+                                "component": "VTextField",
+                                "props": {
+                                    "model": "retention_days",
+                                    "label": "历史数据保留天数 (天)",
+                                    "type": "number",
+                                    "placeholder": "90",
+                                    "hint": "每次采集时自动删除超过该天数的历史记录（0=不自动清理）；建议保留 90~180 天"
+                                }
+                            }]
                         }
                     ]
                 }
@@ -452,7 +471,8 @@ class DownloaderTraffic(_PluginBase):
             "limit_download_kb": 0,
             "recovery_speed_kb": 0,
             "recovery_download_kb": 0,
-            "recovery_cron": "30 0 1 * *"
+            "recovery_cron": "30 0 1 * *",
+            "retention_days": 90
         }
 
     # =====================================================================
@@ -574,6 +594,14 @@ class DownloaderTraffic(_PluginBase):
                 "auth": "bear",
                 "summary": "手动恢复上传限速",
                 "description": "立即把全局上传/下载限速设为「月初恢复限速」(recovery_speed_kb / recovery_download_kb，0=不限)。用于手动测试月初恢复动作",
+            },
+            {
+                "path": "/clear",
+                "endpoint": self.api_clear,
+                "methods": ["POST", "GET"],
+                "auth": "bear",
+                "summary": "清空全部采集历史数据",
+                "description": "清空 traffic_records 与 torrent_snapshots 表。不可恢复；前端需二次确认后调用。清空后下一次采集会以当前值为基准重新入账",
             },
         ]
 
@@ -737,6 +765,32 @@ class DownloaderTraffic(_PluginBase):
             "reason": reason,
         }
 
+    def api_clear(self, request: Request):
+        """清空全部采集历史数据（traffic_records + torrent_snapshots）。不可恢复。"""
+        if self._db is None:
+            return {"ok": False, "error": "数据库未初始化"}
+        records = snaps = 0
+        try:
+            with self._db_lock:
+                cur = self._db.execute("DELETE FROM traffic_records")
+                records = cur.rowcount
+                cur = self._db.execute("DELETE FROM torrent_snapshots")
+                snaps = cur.rowcount
+                self._db.commit()
+            logger.warning(
+                f"下载器流量统计：已清空全部采集历史数据"
+                f"（records={records} 行, snapshots={snaps} 行）"
+            )
+            return {
+                "ok": True,
+                "deleted_records": records,
+                "deleted_snapshots": snaps,
+                "message": "历史数据已清空，下次采集将以当前值为基准重新入账",
+            }
+        except Exception as e:  # pragma: no cover
+            logger.error(f"下载器流量统计：清空历史数据失败：{e}\n{traceback.format_exc()}")
+            return {"ok": False, "error": str(e)}
+
     # =====================================================================
     # 详情页（极简版，真实数据走上面的 API）
     # =====================================================================
@@ -843,6 +897,8 @@ class DownloaderTraffic(_PluginBase):
 
         # 月度阈值限速检查
         self._maybe_apply_monthly_limit(month)
+        # 按「保留天数」清理过期历史记录（0=不清理）
+        self._cleanup_retention()
         # 月初恢复限速由独立定时任务 DownloaderTrafficRecovery 驱动（见 get_service）
 
         logger.info("下载器流量统计：采集完成")
@@ -1201,6 +1257,27 @@ class DownloaderTraffic(_PluginBase):
                     logger.warning(f"下载器流量统计：已清理 {cur.rowcount} 行非法站点名残留数据")
         except Exception as e:  # pragma: no cover
             logger.debug(f"下载器流量统计：清理残留数据失败 {e}")
+
+    def _cleanup_retention(self):
+        """按「保留天数」删除过期历史记录；_retention_days<=0 表示不自动清理。"""
+        if self._db is None or self._retention_days <= 0:
+            return
+        try:
+            cutoff = (datetime.now() - datetime.timedelta(days=self._retention_days)) \
+                .strftime("%Y-%m-%d")
+            with self._db_lock:
+                cur = self._db.execute(
+                    "DELETE FROM traffic_records WHERE date <= ?",
+                    (cutoff,),
+                )
+                self._db.commit()
+                if cur.rowcount:
+                    logger.info(
+                        f"下载器流量统计：已按保留天数 {self._retention_days} 天"
+                        f"清理 {cur.rowcount} 行过期历史记录"
+                    )
+        except Exception as e:  # pragma: no cover
+            logger.debug(f"下载器流量统计：清理过期数据失败 {e}")
 
     def _migrate_site_rows(self):
         """把历史误标记的站点桶合并/清理成 MP 站点名。
