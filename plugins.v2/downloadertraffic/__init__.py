@@ -166,9 +166,12 @@ def _extract_domain(url: str) -> str:
 
 
 class DownloaderTraffic(_PluginBase):
+    # 站点映射诊断日志去重（只对前几个不同的 host 打一次，避免每条种子刷屏）
+    _diag_hosts: set = set()
+
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.0.1"
+    plugin_version = "1.0.2"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -1185,10 +1188,14 @@ class DownloaderTraffic(_PluginBase):
     def _map_domain_to_site(self, host: str) -> Optional[str]:
         """把 tracker 域名映射成 MP 站点设置里的站点名。
 
-        多个候选里取「匹配到的域名字串最长」的一个，避免短域名（如 hd/up）被误命中；
+        命中必须满足「主机名边界」：tracker host 与站点域名相等，或互为子域（兼容
+        www./tracker./on. 这类子域差）。不再用宽松的 in 子串匹配——否则会把
+        on.springsunday.net 这类 host 误归到 domain 只是 sunday.net 之类子串的站点。
+        多个候选里取「匹配到的域名字串最长」的一个（子域比其父域更具体，应优先）。
         domain 字段兼容字符串/逗号分隔/列表三种形态。
         """
         best, best_len = None, 0
+        matches = []  # 仅用于一次性诊断日志
         for name, dom in self._iter_site_mappings():
             if isinstance(dom, str):
                 doms = [d for d in dom.replace("，", ",").split(",") if d]
@@ -1198,10 +1205,15 @@ class DownloaderTraffic(_PluginBase):
                 sd = _extract_domain(str(sd))
                 if not sd:
                     continue
-                # 站点域名在 tracker host 里，或反过来（兼容 www./tracker. 子域差异）
-                if sd in host or host in sd:
+                if host == sd or host.endswith("." + sd) or sd.endswith("." + host):
+                    matches.append((name, sd))
                     if len(sd) > best_len:
                         best, best_len = name, len(sd)
+        if best is not None and host not in self._diag_hosts:
+            self._diag_hosts.add(host)
+            logger.debug(
+                f"下载器流量统计：站点映射诊断 host={host} 候选={matches} => 命中「{best}」"
+            )
         return best
 
     # =====================================================================
