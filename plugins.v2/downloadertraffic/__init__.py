@@ -58,8 +58,14 @@ try:
 except Exception:  # pragma: no cover
     SitesHelper = None
 
-# 站点表直查：SitesHelper.get_sites() 只返回「带内置索引器资源」的站点，可能漏掉手动添加的站。
-# 直接读 MP 站点表（对应「站点设置」里看到的名字），映射最可靠。
+# 站点表读取：官方「站点数据统计」插件同款用法 SiteOper()（无参）最能反映「站点设置」里的站点。
+# 之前尝试 from app.db import db_query / app.db.models.site 在本机读不到 → 候选为 0。
+try:
+    from app.db.site_oper import SiteOper
+except Exception:  # pragma: no cover
+    SiteOper = None
+
+# db_query + Site 模型直查作为兜底（部分 MP 版本可用）
 try:
     from app.db import db_query
     from app.db.models.site import Site
@@ -162,7 +168,7 @@ def _extract_domain(url: str) -> str:
 class DownloaderTraffic(_PluginBase):
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.3.7"
+    plugin_version = "1.3.8"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -952,10 +958,13 @@ class DownloaderTraffic(_PluginBase):
             return "未知站点"
         host = ""
         for tr in trackers:
+            # 字符串：transmission 的 trackers 常是纯 announce 地址
             # dict：qbittorrent-api 的 tracker（url/host/site 键）
             # 对象：transmission-rpc 的 Tracker，必须取真实 announce/url/host，不能 str()（会把内存地址当域名）
             url = ""
-            if isinstance(tr, dict):
+            if isinstance(tr, str):
+                url = tr
+            elif isinstance(tr, dict):
                 url = tr.get("url") or tr.get("host") or tr.get("site") or ""
             else:
                 url = _field(tr, "url", "announce", "host", "sitename", default="")
@@ -972,41 +981,72 @@ class DownloaderTraffic(_PluginBase):
         return self._map_domain_to_site(host) or host
 
     def _iter_site_mappings(self):
-        """聚合 MP 站点的 (站点名, 域名字段) 候选，来源：SitesHelper + 站点表。
+        """聚合 MP 站点的 (站点名, 域名字段) 候选。
 
-        站点表是「站点设置」里配置的全部站，最贴合用户期望的站点名；SitesHelper 作补充。
+        首选官方「站点数据统计」同款的 SiteOper()（无参，读到的是「站点设置」里的全部站点），
+        再补 SitesHelper.get_indexers()，最后用 db_query 直查做兜底。
         """
         seen = set()
-        # 1) SitesHelper（仅返回带索引器资源的站）
+
+        def _emit(name, dom):
+            name = (name or "").strip()
+            if not name:
+                return
+            key = (name, str(dom))
+            if key not in seen:
+                seen.add(key)
+                yield name, dom
+
+        # 1) SiteOper：站点设置里配置的站点（最贴合期望的站点名）
         try:
+            if SiteOper is not None:
+                oper = SiteOper()
+                sites = None
+                for m in ("list_active", "list"):
+                    if hasattr(oper, m):
+                        try:
+                            sites = getattr(oper, m)() or []
+                            if sites:
+                                break
+                        except Exception:  # pragma: no cover
+                            continue
+                for site in sites or []:
+                    name = getattr(site, "name", "") or ""
+                    dom = getattr(site, "domain", "") or getattr(site, "url", "") or ""
+                    for d in _emit(name, dom):
+                        yield d
+        except Exception as e:  # pragma: no cover
+            logger.debug(f"下载器流量统计：SiteOper 站点映射失败 {e}")
+
+        # 2) SitesHelper.get_indexers()
+        try:
+            if self._sites_helper is None and SitesHelper is not None:
+                self._sites_helper = SitesHelper()
             if self._sites_helper is not None:
-                raw = self._sites_helper.get_sites() or []
-                if isinstance(raw, dict):
-                    raw = list(raw.values())
-                for site in raw:
+                indexers = self._sites_helper.get_indexers() or []
+                if isinstance(indexers, dict):
+                    indexers = list(indexers.values())
+                for site in indexers:
                     if isinstance(site, dict):
                         name = site.get("name") or ""
                         dom = site.get("domain") or site.get("url") or ""
                     else:
-                        name = getattr(site, "name", None) or ""
-                        dom = getattr(site, "domain", None) or getattr(site, "url", "") or ""
-                    key = (name, str(dom))
-                    if name and key not in seen:
-                        seen.add(key)
-                        yield name, dom
+                        name = getattr(site, "name", "") or ""
+                        dom = getattr(site, "domain", "") or getattr(site, "url", "") or ""
+                    for d in _emit(name, dom):
+                        yield d
         except Exception as e:  # pragma: no cover
             logger.debug(f"下载器流量统计：SitesHelper 站点映射失败 {e}")
-        # 2) 站点表（站点设置里加了哪些站，就显示哪些站名）
+
+        # 3) db_query 直查兜底
         try:
             for site in _query_all_sites() or []:
-                name = getattr(site, "name", None) or ""
-                dom = getattr(site, "domain", None) or getattr(site, "url", "") or ""
-                key = (name, str(dom))
-                if name and key not in seen:
-                    seen.add(key)
-                    yield name, dom
+                name = getattr(site, "name", "") or ""
+                dom = getattr(site, "domain", "") or getattr(site, "url", "") or ""
+                for d in _emit(name, dom):
+                    yield d
         except Exception as e:  # pragma: no cover
-            logger.debug(f"下载器流量统计：站点表映射失败 {e}")
+            logger.debug(f"下载器流量统计：站点表兜底映射失败 {e}")
 
     def _map_domain_to_site(self, host: str) -> Optional[str]:
         """把 tracker 域名映射成 MP 站点设置里的站点名。
