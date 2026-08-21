@@ -10,7 +10,7 @@
 | --- | --- | --- | --- |
 | 清理媒体文件（Jellyfin修复版） | v2.16.1 | 修复 Jellyfin 删除整个媒体目录时硬链接未同步清理 | 文件整理,媒体库,Jellyfin,硬链接 |
 | 自动限速（KB单位修复版） | v1.1.6 | 修复 qBittorrent 限速单位错误，qB 与 Transmission 统一以 KB 为单位 | 下载器,限速,qBittorrent,Transmission,PT |
-| 下载器流量统计 | v1.0.3 | 按年/月/日统计下载器上传/下载流量并细分到每个 PT 站点；月度上传超阈值自动全局限速、月初按 Cron 自动恢复；支持历史数据自动保留清理 | 下载器,流量统计,qBittorrent,Transmission,PT |
+| 下载器流量统计 | v1.0.4 | 按年/月/日统计下载器上传/下载流量并细分到每个 PT 站点；月度上传超阈值自动全局限速、月初按 Cron 自动恢复；支持历史数据自动保留清理 | 下载器,流量统计,qBittorrent,Transmission,PT |
 
 ## 安装
 
@@ -41,7 +41,7 @@
 
 **配置变更**：qB 与 Transmission 现在使用同一套 KB 值，例如 `1PTBA:100`、`52pt:100` 均表示 100 KB/s（旧 qB 需填 `102400` 的写法作废）。
 
-### 下载器流量统计 v1.0.3
+### 下载器流量统计 v1.0.4
 
 按「年 / 月 / 日」统计 qBittorrent / Transmission 的上传、下载流量，并细分到每个 PT 站点，Vue 图表化展示详情页。
 

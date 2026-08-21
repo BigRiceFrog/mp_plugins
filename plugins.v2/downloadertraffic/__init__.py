@@ -18,6 +18,7 @@ import threading
 import traceback
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import Request
@@ -150,6 +151,20 @@ def _field_multi(obj: Any, key: str, default: Any = None) -> Any:
     return _field(obj, *_FIELD_ALIASES.get(key, (key,)), default=default)
 
 
+def _redact_url(u: Any) -> str:
+    """把 tracker URL 脱敏为仅剩域名：去掉路径/query（含 passkey），避免敏感信息进日志。"""
+    if not u:
+        return ""
+    s = str(u).strip().strip("`'\"")
+    if not s:
+        return ""
+    try:
+        parsed = urlparse(s)
+        return parsed.hostname or s
+    except Exception:  # pragma: no cover
+        return s
+
+
 def _extract_domain(url: str) -> str:
     """从 tracker url 中提取域名，例如 http://tracker.example.com/announce -> example.com"""
     if not url:
@@ -171,7 +186,7 @@ class DownloaderTraffic(_PluginBase):
 
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.0.3"
+    plugin_version = "1.0.4"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -701,12 +716,31 @@ class DownloaderTraffic(_PluginBase):
                 "downloaded": int(r[3] or 0)
             } for r in cur.fetchall()]
 
-        # 总量 = 各真实站点之和（与 GLOBAL 行一致），不再重复
+            # 总览合计采用 GLOBAL 汇总行：与采集入账、限速阈值判断是同一口径，
+            # 避免站点行里历史/别名写入不一致导致的虚高，确保主界面与业务日志一致。
+            tot_sql = ("SELECT COALESCE(SUM(uploaded),0), COALESCE(SUM(downloaded),0) "
+                       "FROM traffic_records WHERE site='GLOBAL'")
+            tot_args: List[Any] = []
+            if period == "month":
+                tot_sql += " AND month=?"
+                tot_args.append(value)
+            elif period == "year":
+                tot_sql += " AND year=?"
+                tot_args.append(int(value))
+            else:  # day
+                tot_sql += " AND date=?"
+                tot_args.append(value)
+            if downloader:
+                tot_sql += " AND downloader=?"
+                tot_args.append(downloader)
+            cur.execute(tot_sql, tot_args)
+            _g = cur.fetchone() or (0, 0)
+
         return {
             "period": period,
             "value": value,
-            "total_uploaded": sum(d["uploaded"] for d in data),
-            "total_downloaded": sum(d["downloaded"] for d in data),
+            "total_uploaded": int(_g[0] or 0),
+            "total_downloaded": int(_g[1] or 0),
             "data": data
         }
 
@@ -886,7 +920,7 @@ class DownloaderTraffic(_PluginBase):
                             f"hash={_field_multi(sample, 'hash')} "
                             f"uploaded={_field_multi(sample, 'uploaded')} "
                             f"downloaded={_field_multi(sample, 'downloaded')} "
-                            f"trackers={_sample_trackers} "
+                            f"trackers={[_redact_url(x) for x in _sample_trackers]} "
                             f"site={self._resolve_site(_sample_trackers)}"
                         )
                     except Exception:
