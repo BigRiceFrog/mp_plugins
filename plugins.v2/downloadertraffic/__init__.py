@@ -186,7 +186,7 @@ class DownloaderTraffic(_PluginBase):
 
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.0.4"
+    plugin_version = "1.0.5"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -1087,10 +1087,12 @@ class DownloaderTraffic(_PluginBase):
                 if ddown < 0:
                     ddown = 0
             else:
-                # 首次见到该种子：把当前累计值作为基准直接入账，
-                # 避免「永远等不到上一次快照」导致数据永久为 0。
-                dup = max(0, up)
-                ddown = max(0, down)
+                # 首次见到该种子：只建立基准快照，不把历史累计计入当月。
+                # 下载器返回的是“生命周期累计值”，没有按月的历史流量；若首采就按累计值
+                # 整段回填，会把前几个月上传的历史量误算进当月（可能形成 1.4T 级别的
+                # 虚高，并误触发月度限速）。改为从此刻起只统计新增增量更符合「月上报」口径。
+                dup = 0
+                ddown = 0
 
             if dup or ddown:
                 bucket = delta_by_site.setdefault(site, {"up": 0, "down": 0})
