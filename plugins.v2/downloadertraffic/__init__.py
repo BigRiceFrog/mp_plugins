@@ -186,7 +186,7 @@ class DownloaderTraffic(_PluginBase):
 
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.0.5"
+    plugin_version = "1.0.6"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -1036,25 +1036,21 @@ class DownloaderTraffic(_PluginBase):
         return len(ok)
 
     def _get_month_total(self, month: str, downloader_names: List[str]) -> int:
-        """统计某自然月（含指定下载器）的累计上传字节数。"""
+        """统计某自然月的累计上传字节数（用于月度阈值判断）。
+
+        采集本身只针对配置勾选的下载器（name_filters），故 GLOBAL 行里只含有
+        “生效下载器”的数据；这里不再按 downloader 过滤，避免配置里的下载器标识
+        与写入行的引擎类型（transmission/qbittorrent）命名不一致时把本月读成 0。
+        """
         if self._db is None:
             return 0
         with self._db_lock:
             try:
-                # 只统计 GLOBAL 汇总行，避免与站点行重复计算导致阈值虚高
-                if downloader_names:
-                    placeholders = ",".join("?" * len(downloader_names))
-                    cur = self._db.execute(
-                        f"SELECT COALESCE(SUM(uploaded),0) FROM traffic_records "
-                        f"WHERE month=? AND site='GLOBAL' AND downloader IN ({placeholders})",
-                        [month] + list(downloader_names)
-                    )
-                else:
-                    cur = self._db.execute(
-                        "SELECT COALESCE(SUM(uploaded),0) FROM traffic_records "
-                        "WHERE month=? AND site='GLOBAL'",
-                        [month]
-                    )
+                cur = self._db.execute(
+                    "SELECT COALESCE(SUM(uploaded),0) FROM traffic_records "
+                    "WHERE month=? AND site='GLOBAL'",
+                    [month]
+                )
                 return int(cur.fetchone()[0] or 0)
             except Exception as e:  # pragma: no cover
                 logger.debug(f"下载器流量统计：统计月上传失败 {e}")
