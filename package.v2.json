@@ -1,4 +1,4 @@
-﻿{
+{
   "RemoveLinkJellyfinFix": {
     "name": "清理媒体文件（Jellyfin修复版）",
     "description": "基于清理媒体文件 v2.16，修复 Jellyfin 删除整个媒体目录时仅产生目录删除事件导致硬链接未同步清理的问题。",
@@ -29,11 +29,12 @@
     "name": "下载器流量统计",
     "description": "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点。配置页可从 MP 已配置下载器中选择；支持月度上传阈值超限后自动全局限速。Vue 图表化详情页。",
     "labels": "下载器,流量统计,qBittorrent,Transmission,PT",
-    "version": "1.4.2",
+    "version": "1.4.3",
     "author": "BigRiceFrog",
     "level": 1,
     "v2": true,
     "history": {
+      "v1.4.3": "补发布包：v1.4.2 版本误将 plugins.v2/downloadertraffic/dist/assets 全部 8 个 bundle 漏提交（实际远端无 dist 目录），导致 MP 无论如何更新都命中降级/旧缓存，仍显示英文 Vuetify 面板（Sat, Aug 22 / Jan..Dec）、无法点选日、选月后头部不变更也不刷新数据。本版本把自研中文面板的 dist/index.html + assets/ 全部 bundle 真实上传至远端，并同步将 MP 市场版本号升到 1.4.3，确保一次更新即可切换为中文面板。",
       "v1.4.2": "彻底解决「无法选 + 全英文」两个痛点：不再依赖 Vuetify VDatePicker 的 locale 与 date adapter（宿主通常没加载 zh 包），改为自研 VCard 内嵌中文面板（紫色头部写死「选择日期/月份/年份 + XXXX 年 XX 月 XX 日」、工具栏「‹ 2026 年 8 月 ›」）；按日用原生 7×6 日期网格（含今日/已选中高亮、跨月灰字）、按月 12 格中文月份（1月…12月）、按年 12 年 3×4 网格；三个模式下任何一格点击都直接写 YYYY…/YYYY-MM/YYYY-MM-DD 并立即刷新；输入框显示中文语义化日期。MP 市场版本号升至 1.4.2（远端 Page.vue 已不再包含 VDatePicker 组件调用，dist 同步重建）。",
       "v1.4.1": "交互修复 + 中文化：①去掉 view-mode 限制，改用 click:date / click:month / click:year 三件套——按日时点具体日（不会提前被月粒度卡住）、按月时点月份方块、按年时点年份方块，选中后才会按对应粒度提交并刷新；② VDatePicker 月份/星期头/标题/底部按钮全部中文（月份「1月…12月」、周日…周六「日…六」、标题「选择日期/月份/年份」），并把 VDatePicker locale 设为 zh-cn；③ 版本号同步升到 1.4.1，MP 市场可正常检测更新。",
       "v1.4.0": "修复详情页日期/月/年输入框无法点选的问题：原先是纯文本 VTextField 只能手输，现改为点击输入框弹出 Vuetify VDatePicker 日历；与左侧「按日/按月/按年」下拉联动自动切换日视图/月视图/年视图，选中后自动按当前粒度截断为 YYYY-MM-DD / YYYY-MM / YYYY 并立即刷新图表；前端 dist 同步重建。",
