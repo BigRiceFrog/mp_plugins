@@ -111,27 +111,56 @@ async function load() {
   }
 }
 onMounted(load)
-// ================= 日期/月/年选择器（修复不可点击选择的问题）=================
-// 思路：
-//  - Vuetify VDatePicker 模型值永远是 "YYYY-MM-DD"（或年月日对象）。
-//  - UI 上按 period 展示不同视图（year/month/day），选中后按 period 截断成 value。
-//  - 切换 period 时重置 value；同时同步 pickerDate（用于打开 picker 时高亮当前值）。
+
+// ============================================================
+// 日期/月/年选择器（v1.4.1 交互修复 + 全中文）
+// ============================================================
+// 关键点：
+// 1) 不再用 view-mode 锁死——所有 period 都打开"日视图"，用户可以：
+//    - 按日模式：点某一天（具体日）→ 提交 YYYY-MM-DD
+//    - 按月模式：日历顶部「月份标题」可切换到月面板；点某个月方块 → 提交 YYYY-MM
+//    - 按年模式：日历顶部「年份标题」可切换到年面板；点某年 → 提交 YYYY
+//    为了更顺手，我们直接用 click:year / click:month 事件：
+//      - click:year  → 点年面板里的某一年
+//      - click:month → 点月面板里的某一月（或月模式中的月份单元格）
+//      - click:date  → 点日面板里的某一天
+// 2) 中文化：传入 months / weekdays / header / cancel / ok / today / clear 等
+//    VDatePicker 3.x 支持 slots/prop 传中文覆盖。
+//    月份名 / 周名 直接写死中文数组（避免依赖宿主的 vuetify locale 是否已加载中文）。
+// 3) 输入框设为 readonly + 日历图标，避免手输错；占位随 period 切换。
 const dateMenuOpen = ref(false)
+// picker 的「显示年 / 月」用于头部标题 & 非日模式下 picker 跳转到的年月
+const displayYear = ref(new Date().getFullYear())
+const displayMonth = ref(new Date().getMonth() + 1) // 1..12
+// picker v-model 值总是完整的 YYYY-MM-DD（Vuetify 约束）；实际查询用 value。
 const pickerDate = ref('')
-// 根据 period + 当前 value 推断 picker 的 YYYY-MM-DD（用于 picker 回显）
+
+// 按当前 value / period 同步 pickerDate 与 显示年月
 function syncPickerFromValue() {
   const v = value.value || defaultValue()
+  let y, mo, da
   if (period.value === 'year') {
-    const y = (String(v).match(/\d{4}/) || [])[0] || String(new Date().getFullYear())
-    pickerDate.value = `${y}-01-01`
+    y = (String(v).match(/\d{4}/) || [])[0] || String(new Date().getFullYear())
+    mo = 1; da = 1
   } else if (period.value === 'month') {
-    const m = (String(v).match(/^\d{4}-\d{2}/) || [])[0] || defaultValue()
-    pickerDate.value = `${m}-01`
+    const mm = String(v).match(/^(\d{4})-(\d{2})/)
+    y = mm ? mm[1] : String(new Date().getFullYear())
+    mo = mm ? Number(mm[2]) : new Date().getMonth() + 1
+    da = 1
   } else {
-    pickerDate.value = (String(v).match(/^\d{4}-\d{2}-\d{2}/) || [defaultValue()])[0]
+    const dd = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/)
+    y = dd ? dd[1] : String(new Date().getFullYear())
+    mo = dd ? Number(dd[2]) : new Date().getMonth() + 1
+    da = dd ? Number(dd[3]) : new Date().getDate()
   }
+  y = Number(y)
+  mo = Number(mo)
+  da = Number(da)
+  displayYear.value = y
+  displayMonth.value = mo
+  pickerDate.value = `${y}-${String(mo).padStart(2, '0')}-${String(da).padStart(2, '0')}`
 }
-// 首次与 period 变化时先补齐默认值，再同步 picker
+// period 切换：重置 value + picker + 立刻查
 watch(period, () => {
   value.value = ''
   nextTick(() => {
@@ -140,75 +169,90 @@ watch(period, () => {
     load()
   })
 })
-// value 可能被外部（初始化 load 里 defaultValue）改 → 保持 picker 同步
 watch(value, syncPickerFromValue, { immediate: true })
-// Vuetify 3 年/月/日 三级视图对应：
-//   - 按年：打开在「年」面板（view-mode=year），点到月面板就收
-//   - 按月：打开在「月」面板（view-mode=month），点到日面板就收
-//   - 按日：打开在「日」面板（view-mode=day），选到具体日就收
-const pickerViewMode = computed(() => (period.value === 'year' ? 'year' : period.value === 'month' ? 'month' : 'day'))
-// VDatePicker 的 v-model 绑定 pickerDate（YYYY-MM-DD）；选完后按 period 截断写回 value
-function onPickerUpdate(val) {
-  if (!val) return
-  // VDatePicker 可能返回对象或字符串；统一转字符串
-  const s = typeof val === 'string' ? val : (val.date || val.year ? `${val.year}-${String(val.month || 1).padStart(2, '0')}-${String(val.day || 1).padStart(2, '0')}` : String(val))
-  const m = s.match(/^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?/)
-  if (!m) return
-  pickerDate.value = s
-  const [, y, mo, da] = m
-  if (period.value === 'year') {
-    value.value = y
-    // 年视图选择完成直接关闭；注意 VDatePicker 选年通常不会 emit 更新，
-    // 但在「年」面板点中年份时会把 year 推进 —— 这里我们在 update:model-value 都处理。
-    dateMenuOpen.value = false
-    load()
-  } else if (period.value === 'month') {
-    value.value = `${y}-${mo || '01'}`
-    // 月视图：切换到某个月即可关闭，不必再选日
-    dateMenuOpen.value = false
-    load()
-  } else {
-    value.value = `${y}-${mo || '01'}-${da || '01'}`
-    dateMenuOpen.value = false
-    load()
-  }
-}
-// 对「按月」模式：点击月份节点后 VDatePicker 只会把「显示年月」推进，但不会 emit model-value。
-// 所以我们监听 update:year / update:month 变化，在按月/按年模式下直接提交。
-function onPickerYearUpdate(y) {
-  if (period.value !== 'year') return
-  const m = (pickerDate.value || '').match(/^\d{4}-(\d{2})(?:-(\d{2}))?/) || []
-  value.value = String(y)
-  pickerDate.value = `${y}-${m[1] || '01'}-${m[2] || '01'}`
+
+// 点击具体日（日视图） → 仅在 period=day 时提交；否则（按月/按年）仍需等用户点月/年
+function onClickDate(dt) {
+  if (period.value !== 'day') return
+  const { y, m, d } = normalizeDate(dt)
+  if (!y || !m || !d) return
+  pickerDate.value = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+  value.value = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
   dateMenuOpen.value = false
   load()
 }
-function onPickerMonthUpdate(v) {
-  if (period.value === 'day') return
-  // v 可能是 { year, month } 对象或字符串
-  let y, mo
-  if (v && typeof v === 'object') {
-    y = v.year; mo = v.month
-  } else if (typeof v === 'string') {
-    const m0 = v.match(/^(\d{4})(?:-(\d{2}))?/)
-    if (m0) { y = m0[1]; mo = m0[2] }
+// 点击某个月（月面板里的月方块） → period=month 时提交 YYYY-MM；period=year 时不提前收
+function onClickMonth(dt) {
+  const { y, m } = normalizeDate(dt)
+  if (!y || !m) return
+  displayYear.value = y
+  displayMonth.value = m
+  // 让 picker 的 v-model 也跳过去，避免下次打开还停在别处
+  const padM = String(m).padStart(2, '0')
+  pickerDate.value = `${y}-${padM}-${String(extractDayFromPicker() || 1).padStart(2, '0')}`
+  if (period.value === 'month') {
+    value.value = `${y}-${padM}`
+    dateMenuOpen.value = false
+    load()
   }
-  if (!y || !mo) return
+}
+// 点击年面板里的某一年 → period=year 直接提交；其它 period 仅切换显示
+function onClickYear(dt) {
+  const { y, m } = normalizeDate(dt)
+  if (!y) return
+  displayYear.value = y
+  if (m) displayMonth.value = m
+  const padM = String(displayMonth.value || 1).padStart(2, '0')
+  pickerDate.value = `${y}-${padM}-${String(extractDayFromPicker() || 1).padStart(2, '0')}`
   if (period.value === 'year') {
     value.value = String(y)
-  } else {
-    value.value = `${y}-${String(mo).padStart(2, '0')}`
+    dateMenuOpen.value = false
+    load()
   }
-  pickerDate.value = `${y}-${String(mo).padStart(2, '0')}-01`
-  dateMenuOpen.value = false
-  load()
 }
-// 显示在输入框上的占位/当前值提示
+function normalizeDate(dt) {
+  if (!dt) return {}
+  if (typeof dt === 'string') {
+    const m0 = dt.match(/^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?/)
+    if (m0) return { y: Number(m0[1]), m: m0[2] ? Number(m0[2]) : undefined, d: m0[3] ? Number(m0[3]) : undefined }
+    return {}
+  }
+  if (typeof dt === 'object') {
+    // Vuetify 常用几种：{year, month, day} / {date:'YYYY-MM-DD'} / JS Date
+    if ('year' in dt && ('month' in dt || 'day' in dt)) {
+      return { y: Number(dt.year), m: dt.month != null ? Number(dt.month) : undefined, d: dt.day != null ? Number(dt.day) : undefined }
+    }
+    if (dt.date) return normalizeDate(dt.date)
+    if (dt instanceof Date && !isNaN(dt.getTime())) {
+      return { y: dt.getFullYear(), m: dt.getMonth() + 1, d: dt.getDate() }
+    }
+  }
+  return {}
+}
+function extractDayFromPicker() {
+  const mm = String(pickerDate.value || '').match(/^\d{4}-\d{2}-(\d{2})/)
+  return mm ? Number(mm[1]) : null
+}
+
+// ---------- 中文化 ----------
+// 直接传 props；Vuetify 3 VDatePicker 中大部分文案都有对应 prop。
+const monthsZh = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
+const weekdaysAbbrZh = ['日', '一', '二', '三', '四', '五', '六']
+
+// 输入框占位/当前值提示（中文语义化）
 const valuePlaceholder = computed(() => {
-  if (period.value === 'year') return '2026'
-  if (period.value === 'month') return '2026-08'
-  return '2026-08-18'
+  if (period.value === 'year') return '请选择年份，如 2026'
+  if (period.value === 'month') return '请选择月份，如 2026-08'
+  return '请选择日期，如 2026-08-22'
 })
+
+// 工具栏上 picker 的当前标题（中文化）
+const pickerTitle = computed(() => {
+  if (period.value === 'year') return '选择年份（点击年份方块即选中）'
+  if (period.value === 'month') return '选择月份（点击月份方块即选中，可再点年份切换年）'
+  return '选择日期（点击具体日期；顶部年月可切换）'
+})
+
 // 仅展示具体站点（排除 GLOBAL 汇总行）用于柱状图
 const siteRows = computed(() => records.value.filter((r) => r.site !== 'GLOBAL'))
 const maxSiteBytes = computed(() => {
@@ -269,6 +313,7 @@ const lineXLabels = computed(() => {
   return out
 })
 </script>
+
 <template>
   <div class="dt-page">
     <VToolbar density="comfortable" color="transparent">
@@ -286,12 +331,12 @@ const lineXLabels = computed(() => {
         style="max-width: 110px"
         variant="outlined"
       />
-      <!-- 日期/月/年选择器：点击输入框弹出日历，可点选日 / 月 / 年，自动按 period 截断 -->
+      <!-- 日期/月/年选择器：输入框可点弹出日历 -->
       <VMenu
         v-model="dateMenuOpen"
         :close-on-content-click="false"
         location="bottom start"
-        min-width="320"
+        min-width="340"
         class="ms-2"
       >
         <template #activator="{ props: menuProps }">
@@ -300,7 +345,7 @@ const lineXLabels = computed(() => {
             :placeholder="valuePlaceholder"
             density="compact"
             hide-details
-            style="max-width: 170px; min-width: 150px"
+            style="max-width: 230px; min-width: 190px"
             variant="outlined"
             readonly
             append-inner-icon="mdi-calendar"
@@ -308,16 +353,31 @@ const lineXLabels = computed(() => {
           />
         </template>
         <VCard class="pa-0" variant="flat">
+          <!--
+            文案中文化：
+            - title / months / weekdays（缩写）
+            - header 下方给一行使用提示（看 pickerTitle）
+            - 底部按钮：取消 / 今天 / 确定
+          -->
+          <div class="px-3 pt-2 pb-1 text-caption text-medium-emphasis">
+            {{ pickerTitle }}
+          </div>
           <VDatePicker
             v-model="pickerDate"
-            :view-mode="pickerViewMode"
-            :title="period === 'year' ? '选择年份' : period === 'month' ? '选择月份' : '选择日期'"
-            show-adjacent-months
             color="primary"
-            @update:model-value="onPickerUpdate"
-            @update:year="onPickerYearUpdate"
-            @update:month="onPickerMonthUpdate"
+            show-adjacent-months
+            :months="monthsZh"
+            :weekdays="weekdaysAbbrZh"
+            locale="zh-cn"
+            first-day-of-week="1"
+            @click:year="onClickYear"
+            @click:month="onClickMonth"
+            @click:date="onClickDate"
           />
+          <div class="d-flex justify-end ga-1 px-2 pb-2">
+            <VBtn size="small" variant="text" @click="onClickDate({ year: new Date().getFullYear(), month: new Date().getMonth() + 1, day: new Date().getDate() })">今天</VBtn>
+            <VBtn size="small" variant="text" @click="dateMenuOpen = false">关闭</VBtn>
+          </div>
         </VCard>
       </VMenu>
       <VTextField
