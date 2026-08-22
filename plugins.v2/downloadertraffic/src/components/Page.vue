@@ -1,6 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
-
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 const props = defineProps({
   api: {
     type: Object,
@@ -15,21 +14,16 @@ const props = defineProps({
     default: false,
   },
 })
-
 const emit = defineEmits(['close'])
-
 const period = ref('month')
 const value = ref('')
 const downloader = ref('')
-
 const loading = ref(false)
 const error = ref('')
-
 const records = ref([])
 const totalUp = ref(0)
 const totalDown = ref(0)
 const trend = ref([])
-
 // 后端 API 路由由 MoviePilot 以「插件类名 DownloaderTraffic」为前缀注册，
 // 这里固定使用类名，兼容宿主传入小写文件夹名 / 未传 pluginId 的情况。
 const pid = computed(() => {
@@ -37,12 +31,10 @@ const pid = computed(() => {
   return v && v !== 'downloadertraffic' ? v : 'DownloaderTraffic'
 })
 const base = computed(() => `plugin/${pid.value}`)
-
 // 手动触发采集 / 解除限速
 const collectBusy = ref(false)
 const resetBusy = ref(false)
 const actionMsg = ref('')
-
 async function doCollect() {
   collectBusy.value = true
   actionMsg.value = ''
@@ -57,7 +49,6 @@ async function doCollect() {
     setTimeout(load, 800)
   }
 }
-
 async function doReset() {
   resetBusy.value = true
   actionMsg.value = ''
@@ -73,7 +64,6 @@ async function doReset() {
     resetBusy.value = false
   }
 }
-
 function fmtBytes(n) {
   const num = Number(n || 0)
   if (num >= 1024 ** 4) return (num / 1024 ** 4).toFixed(2) + ' TB'
@@ -82,14 +72,12 @@ function fmtBytes(n) {
   if (num >= 1024) return (num / 1024).toFixed(2) + ' KB'
   return num + ' B'
 }
-
 function defaultValue() {
   const d = new Date()
   if (period.value === 'year') return String(d.getFullYear())
   if (period.value === 'month') return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
-
 // api.get 直接返回响应体（MP 前端拦截器已解包 response.data）；
 // 个别宿主若返回 axios 响应对象则解一层 .data
 function unwrap(res) {
@@ -99,7 +87,6 @@ function unwrap(res) {
   }
   return res
 }
-
 async function load() {
   loading.value = true
   error.value = ''
@@ -123,16 +110,107 @@ async function load() {
     loading.value = false
   }
 }
-
 onMounted(load)
+// ================= 日期/月/年选择器（修复不可点击选择的问题）=================
+// 思路：
+//  - Vuetify VDatePicker 模型值永远是 "YYYY-MM-DD"（或年月日对象）。
+//  - UI 上按 period 展示不同视图（year/month/day），选中后按 period 截断成 value。
+//  - 切换 period 时重置 value；同时同步 pickerDate（用于打开 picker 时高亮当前值）。
+const dateMenuOpen = ref(false)
+const pickerDate = ref('')
+// 根据 period + 当前 value 推断 picker 的 YYYY-MM-DD（用于 picker 回显）
+function syncPickerFromValue() {
+  const v = value.value || defaultValue()
+  if (period.value === 'year') {
+    const y = (String(v).match(/\d{4}/) || [])[0] || String(new Date().getFullYear())
+    pickerDate.value = `${y}-01-01`
+  } else if (period.value === 'month') {
+    const m = (String(v).match(/^\d{4}-\d{2}/) || [])[0] || defaultValue()
+    pickerDate.value = `${m}-01`
+  } else {
+    pickerDate.value = (String(v).match(/^\d{4}-\d{2}-\d{2}/) || [defaultValue()])[0]
+  }
+}
+// 首次与 period 变化时先补齐默认值，再同步 picker
 watch(period, () => {
   value.value = ''
-  load()
+  nextTick(() => {
+    if (!value.value) value.value = defaultValue()
+    syncPickerFromValue()
+    load()
+  })
 })
-
+// value 可能被外部（初始化 load 里 defaultValue）改 → 保持 picker 同步
+watch(value, syncPickerFromValue, { immediate: true })
+// Vuetify 3 年/月/日 三级视图对应：
+//   - 按年：打开在「年」面板（view-mode=year），点到月面板就收
+//   - 按月：打开在「月」面板（view-mode=month），点到日面板就收
+//   - 按日：打开在「日」面板（view-mode=day），选到具体日就收
+const pickerViewMode = computed(() => (period.value === 'year' ? 'year' : period.value === 'month' ? 'month' : 'day'))
+// VDatePicker 的 v-model 绑定 pickerDate（YYYY-MM-DD）；选完后按 period 截断写回 value
+function onPickerUpdate(val) {
+  if (!val) return
+  // VDatePicker 可能返回对象或字符串；统一转字符串
+  const s = typeof val === 'string' ? val : (val.date || val.year ? `${val.year}-${String(val.month || 1).padStart(2, '0')}-${String(val.day || 1).padStart(2, '0')}` : String(val))
+  const m = s.match(/^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?/)
+  if (!m) return
+  pickerDate.value = s
+  const [, y, mo, da] = m
+  if (period.value === 'year') {
+    value.value = y
+    // 年视图选择完成直接关闭；注意 VDatePicker 选年通常不会 emit 更新，
+    // 但在「年」面板点中年份时会把 year 推进 —— 这里我们在 update:model-value 都处理。
+    dateMenuOpen.value = false
+    load()
+  } else if (period.value === 'month') {
+    value.value = `${y}-${mo || '01'}`
+    // 月视图：切换到某个月即可关闭，不必再选日
+    dateMenuOpen.value = false
+    load()
+  } else {
+    value.value = `${y}-${mo || '01'}-${da || '01'}`
+    dateMenuOpen.value = false
+    load()
+  }
+}
+// 对「按月」模式：点击月份节点后 VDatePicker 只会把「显示年月」推进，但不会 emit model-value。
+// 所以我们监听 update:year / update:month 变化，在按月/按年模式下直接提交。
+function onPickerYearUpdate(y) {
+  if (period.value !== 'year') return
+  const m = (pickerDate.value || '').match(/^\d{4}-(\d{2})(?:-(\d{2}))?/) || []
+  value.value = String(y)
+  pickerDate.value = `${y}-${m[1] || '01'}-${m[2] || '01'}`
+  dateMenuOpen.value = false
+  load()
+}
+function onPickerMonthUpdate(v) {
+  if (period.value === 'day') return
+  // v 可能是 { year, month } 对象或字符串
+  let y, mo
+  if (v && typeof v === 'object') {
+    y = v.year; mo = v.month
+  } else if (typeof v === 'string') {
+    const m0 = v.match(/^(\d{4})(?:-(\d{2}))?/)
+    if (m0) { y = m0[1]; mo = m0[2] }
+  }
+  if (!y || !mo) return
+  if (period.value === 'year') {
+    value.value = String(y)
+  } else {
+    value.value = `${y}-${String(mo).padStart(2, '0')}`
+  }
+  pickerDate.value = `${y}-${String(mo).padStart(2, '0')}-01`
+  dateMenuOpen.value = false
+  load()
+}
+// 显示在输入框上的占位/当前值提示
+const valuePlaceholder = computed(() => {
+  if (period.value === 'year') return '2026'
+  if (period.value === 'month') return '2026-08'
+  return '2026-08-18'
+})
 // 仅展示具体站点（排除 GLOBAL 汇总行）用于柱状图
 const siteRows = computed(() => records.value.filter((r) => r.site !== 'GLOBAL'))
-
 const maxSiteBytes = computed(() => {
   let m = 0
   for (const r of siteRows.value) {
@@ -140,7 +218,6 @@ const maxSiteBytes = computed(() => {
   }
   return m || 1
 })
-
 // 柱状图几何
 const barW = 360
 const barH = 26
@@ -153,7 +230,6 @@ function barDownWidth(r) {
   return (Number(r.downloaded || 0) / maxSiteBytes.value) * barW
 }
 const barSvgHeight = computed(() => siteRows.value.length * (barH + barGap) + 10)
-
 // 折线图几何
 const lineW = 640
 const lineH = 220
@@ -193,7 +269,6 @@ const lineXLabels = computed(() => {
   return out
 })
 </script>
-
 <template>
   <div class="dt-page">
     <VToolbar density="comfortable" color="transparent">
@@ -211,15 +286,40 @@ const lineXLabels = computed(() => {
         style="max-width: 110px"
         variant="outlined"
       />
-      <VTextField
-        v-model="value"
-        :placeholder="period === 'year' ? '2026' : period === 'month' ? '2026-08' : '2026-08-18'"
-        density="compact"
-        hide-details
-        style="max-width: 150px"
-        variant="outlined"
+      <!-- 日期/月/年选择器：点击输入框弹出日历，可点选日 / 月 / 年，自动按 period 截断 -->
+      <VMenu
+        v-model="dateMenuOpen"
+        :close-on-content-click="false"
+        location="bottom start"
+        min-width="320"
         class="ms-2"
-      />
+      >
+        <template #activator="{ props: menuProps }">
+          <VTextField
+            v-model="value"
+            :placeholder="valuePlaceholder"
+            density="compact"
+            hide-details
+            style="max-width: 170px; min-width: 150px"
+            variant="outlined"
+            readonly
+            append-inner-icon="mdi-calendar"
+            v-bind="menuProps"
+          />
+        </template>
+        <VCard class="pa-0" variant="flat">
+          <VDatePicker
+            v-model="pickerDate"
+            :view-mode="pickerViewMode"
+            :title="period === 'year' ? '选择年份' : period === 'month' ? '选择月份' : '选择日期'"
+            show-adjacent-months
+            color="primary"
+            @update:model-value="onPickerUpdate"
+            @update:year="onPickerYearUpdate"
+            @update:month="onPickerMonthUpdate"
+          />
+        </VCard>
+      </VMenu>
       <VTextField
         v-model="downloader"
         placeholder="下载器(可选)"
@@ -249,15 +349,12 @@ const lineXLabels = computed(() => {
       <VBtn icon="mdi-close" variant="text" @click="emit('close')" />
     </VToolbar>
     <VDivider />
-
     <div v-if="actionMsg" class="pa-3">
       <VAlert density="compact" variant="tonal" :type="actionMsg.includes('失败') ? 'error' : 'success'">
         {{ actionMsg }}
       </VAlert>
     </div>
-
     <div v-if="error" class="text-error pa-3">{{ error }}</div>
-
     <!-- 汇总卡片 -->
     <div class="dt-cards">
       <VCard variant="tonal" color="green" class="dt-card">
@@ -275,7 +372,6 @@ const lineXLabels = computed(() => {
         </div>
       </VCard>
     </div>
-
     <!-- 按 PT 站点细分（柱状图） -->
     <VCard class="dt-section" title="按 PT 站点细分">
       <template #text>
@@ -315,7 +411,6 @@ const lineXLabels = computed(() => {
         </svg>
       </template>
     </VCard>
-
     <!-- 时间趋势（折线图） -->
     <VCard class="dt-section" :title="`时间趋势（${period === 'year' ? '逐月' : '逐日'}）`">
       <template #text>
@@ -347,7 +442,6 @@ const lineXLabels = computed(() => {
         </div>
       </template>
     </VCard>
-
     <!-- 明细表 -->
     <VCard class="dt-section" title="明细数据">
       <template #text>
@@ -374,7 +468,6 @@ const lineXLabels = computed(() => {
     </VCard>
   </div>
 </template>
-
 <style scoped>
 .dt-page { padding-bottom: 16px; }
 .dt-cards { display: flex; gap: 12px; padding: 12px; flex-wrap: wrap; }
