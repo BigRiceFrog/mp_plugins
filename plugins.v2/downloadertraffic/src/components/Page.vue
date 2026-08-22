@@ -24,14 +24,15 @@ const records = ref([])
 const totalUp = ref(0)
 const totalDown = ref(0)
 const trend = ref([])
-// 后端 API 路由由 MoviePilot 以「插件类名 DownloaderTraffic」为前缀注册，
+// 后端 API 路由由 MoviePilot 以「插件类名 DownloaderTraffic」为前缀注册；
 // 这里固定使用类名，兼容宿主传入小写文件夹名 / 未传 pluginId 的情况。
 const pid = computed(() => {
   const v = props.pluginId
   return v && v !== 'downloadertraffic' ? v : 'DownloaderTraffic'
 })
 const base = computed(() => `plugin/${pid.value}`)
-// 手动触发采集 / 解除限速
+
+// 立即采集 / 解除限速
 const collectBusy = ref(false)
 const resetBusy = ref(false)
 const actionMsg = ref('')
@@ -72,14 +73,13 @@ function fmtBytes(n) {
   if (num >= 1024) return (num / 1024).toFixed(2) + ' KB'
   return num + ' B'
 }
+function pad2(n) { return String(n).padStart(2, '0') }
 function defaultValue() {
   const d = new Date()
   if (period.value === 'year') return String(d.getFullYear())
-  if (period.value === 'month') return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  if (period.value === 'month') return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 }
-// api.get 直接返回响应体（MP 前端拦截器已解包 response.data）；
-// 个别宿主若返回 axios 响应对象则解一层 .data
 function unwrap(res) {
   if (res && typeof res === 'object' && !Array.isArray(res) && 'data' in res &&
       ('status' in res || 'statusText' in res || 'headers' in res)) {
@@ -111,149 +111,140 @@ async function load() {
   }
 }
 onMounted(load)
+watch(period, () => {
+  value.value = defaultValue()
+  nextTick(load)
+})
 
 // ============================================================
-// 日期/月/年选择器（v1.4.1 交互修复 + 全中文）
+// 自研日期 / 月 / 年选择面板（v1.4.2 起不再依赖 Vuetify 内部本地化）
 // ============================================================
 // 关键点：
-// 1) 不再用 view-mode 锁死——所有 period 都打开"日视图"，用户可以：
-//    - 按日模式：点某一天（具体日）→ 提交 YYYY-MM-DD
-//    - 按月模式：日历顶部「月份标题」可切换到月面板；点某个月方块 → 提交 YYYY-MM
-//    - 按年模式：日历顶部「年份标题」可切换到年面板；点某年 → 提交 YYYY
-//    为了更顺手，我们直接用 click:year / click:month 事件：
-//      - click:year  → 点年面板里的某一年
-//      - click:month → 点月面板里的某一月（或月模式中的月份单元格）
-//      - click:date  → 点日面板里的某一天
-// 2) 中文化：传入 months / weekdays / header / cancel / ok / today / clear 等
-//    VDatePicker 3.x 支持 slots/prop 传中文覆盖。
-//    月份名 / 周名 直接写死中文数组（避免依赖宿主的 vuetify locale 是否已加载中文）。
-// 3) 输入框设为 readonly + 日历图标，避免手输错；占位随 period 切换。
+// - 完全自己拼中文，不依赖 Vuetify 实例的 locale / date adapter / 宿主的 zh 语言包。
+// - 面板与 period 联动：period=day 只看日面板；period=month 只看月面板；period=year 只看年面板。
+// - 点击后立刻写 value、关面板、刷新。
+const MONTHS_ZH = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
+const WDAYS_ZH = ['日', '一', '二', '三', '四', '五', '六']
+
 const dateMenuOpen = ref(false)
-// picker 的「显示年 / 月」用于头部标题 & 非日模式下 picker 跳转到的年月
-const displayYear = ref(new Date().getFullYear())
-const displayMonth = ref(new Date().getMonth() + 1) // 1..12
-// picker v-model 值总是完整的 YYYY-MM-DD（Vuetify 约束）；实际查询用 value。
-const pickerDate = ref('')
-
-// 按当前 value / period 同步 pickerDate 与 显示年月
-function syncPickerFromValue() {
+const selYear = ref(new Date().getFullYear())
+const selMonth = ref(new Date().getMonth() + 1) // 1..12
+// 选月/选年模式时，也保留展示的「当前月」与「当前年」
+function syncFromValue() {
   const v = value.value || defaultValue()
-  let y, mo, da
-  if (period.value === 'year') {
-    y = (String(v).match(/\d{4}/) || [])[0] || String(new Date().getFullYear())
-    mo = 1; da = 1
-  } else if (period.value === 'month') {
-    const mm = String(v).match(/^(\d{4})-(\d{2})/)
-    y = mm ? mm[1] : String(new Date().getFullYear())
-    mo = mm ? Number(mm[2]) : new Date().getMonth() + 1
-    da = 1
-  } else {
-    const dd = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/)
-    y = dd ? dd[1] : String(new Date().getFullYear())
-    mo = dd ? Number(dd[2]) : new Date().getMonth() + 1
-    da = dd ? Number(dd[3]) : new Date().getDate()
+  const ym = String(v).match(/(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?/)
+  if (ym) {
+    selYear.value = Number(ym[1])
+    if (ym[2]) selMonth.value = Number(ym[2])
   }
-  y = Number(y)
-  mo = Number(mo)
-  da = Number(da)
-  displayYear.value = y
-  displayMonth.value = mo
-  pickerDate.value = `${y}-${String(mo).padStart(2, '0')}-${String(da).padStart(2, '0')}`
 }
-// period 切换：重置 value + picker + 立刻查
-watch(period, () => {
-  value.value = ''
-  nextTick(() => {
-    if (!value.value) value.value = defaultValue()
-    syncPickerFromValue()
-    load()
-  })
-})
-watch(value, syncPickerFromValue, { immediate: true })
+watch(value, syncFromValue, { immediate: true })
 
-// 点击具体日（日视图） → 仅在 period=day 时提交；否则（按月/按年）仍需等用户点月/年
-function onClickDate(dt) {
-  if (period.value !== 'day') return
-  const { y, m, d } = normalizeDate(dt)
-  if (!y || !m || !d) return
-  pickerDate.value = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
-  value.value = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+// 日历网格（按日面板用）
+function buildMonthGrid(y, m) {
+  // 返回 42 格（6 周）；每格 {y,m,d,inMonth,label}
+  const first = new Date(y, m - 1, 1)
+  const startOffset = first.getDay() // 周日=0
+  const grid = []
+  const from = new Date(y, m - 1, 1 - startOffset)
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(from.getFullYear(), from.getMonth(), from.getDate() + i)
+    grid.push({
+      y: d.getFullYear(),
+      m: d.getMonth() + 1,
+      d: d.getDate(),
+      inMonth: d.getFullYear() === y && (d.getMonth() + 1) === m,
+      label: d.getDate(),
+    })
+  }
+  return grid
+}
+const grid = computed(() => buildMonthGrid(selYear.value, selMonth.value))
+
+// 年面板：当前年前后 11 年，共 12 格；点标题栏左右翻 12 年
+const yearPageBase = ref(new Date().getFullYear() - 5) // 第一个显示的年份
+const yearGrid = computed(() => {
+  const out = []
+  for (let i = 0; i < 12; i++) out.push(yearPageBase.value + i)
+  return out
+})
+
+// 今日高亮
+const today = new Date()
+const todayKey = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`
+function cellKey(g) { return `${g.y}-${pad2(g.m)}-${pad2(g.d)}` }
+function isSelectedDay(g) {
+  if (period.value !== 'day') return false
+  return value.value === cellKey(g)
+}
+function isToday(g) { return cellKey(g) === todayKey }
+
+// 显示用：当前输入框的中文语义化显示（仅用于 placeholder，绑定值仍是原始 YYYY...）
+const valueDisplay = computed(() => {
+  if (!value.value) return ''
+  if (period.value === 'day') return value.value.replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$1 年 $2 月 $3 日')
+  if (period.value === 'month') return value.value.replace(/^(\d{4})-(\d{2})$/, '$1 年 $2 月')
+  return `${value.value} 年`
+})
+const valuePlaceholder = computed(() => {
+  if (period.value === 'year') return '请选择年份'
+  if (period.value === 'month') return '请选择月份'
+  return '请选择日期'
+})
+const pickerHeaderTitle = computed(() => {
+  if (period.value === 'day') return `${selYear.value} 年 ${selMonth.value} 月`
+  if (period.value === 'month') return `${selYear.value} 年`
+  return `${yearPageBase.value} — ${yearPageBase.value + 11} 年`
+})
+function headerLeft() {
+  if (period.value === 'day') {
+    selMonth.value--
+    if (selMonth.value < 1) { selMonth.value = 12; selYear.value-- }
+  } else if (period.value === 'month') {
+    selYear.value--
+  } else {
+    yearPageBase.value -= 12
+  }
+}
+function headerRight() {
+  if (period.value === 'day') {
+    selMonth.value++
+    if (selMonth.value > 12) { selMonth.value = 1; selYear.value++ }
+  } else if (period.value === 'month') {
+    selYear.value++
+  } else {
+    yearPageBase.value += 12
+  }
+}
+function goToday() {
+  selYear.value = today.getFullYear()
+  selMonth.value = today.getMonth() + 1
+  yearPageBase.value = today.getFullYear() - 5
+  if (period.value === 'day') {
+    value.value = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`
+    dateMenuOpen.value = false
+    load()
+  }
+}
+function pickDay(g) {
+  selYear.value = g.y; selMonth.value = g.m
+  value.value = `${g.y}-${pad2(g.m)}-${pad2(g.d)}`
   dateMenuOpen.value = false
   load()
 }
-// 点击某个月（月面板里的月方块） → period=month 时提交 YYYY-MM；period=year 时不提前收
-function onClickMonth(dt) {
-  const { y, m } = normalizeDate(dt)
-  if (!y || !m) return
-  displayYear.value = y
-  displayMonth.value = m
-  // 让 picker 的 v-model 也跳过去，避免下次打开还停在别处
-  const padM = String(m).padStart(2, '0')
-  pickerDate.value = `${y}-${padM}-${String(extractDayFromPicker() || 1).padStart(2, '0')}`
-  if (period.value === 'month') {
-    value.value = `${y}-${padM}`
-    dateMenuOpen.value = false
-    load()
-  }
+function pickMonth(mi /*1..12*/) {
+  value.value = `${selYear.value}-${pad2(mi)}`
+  dateMenuOpen.value = false
+  load()
 }
-// 点击年面板里的某一年 → period=year 直接提交；其它 period 仅切换显示
-function onClickYear(dt) {
-  const { y, m } = normalizeDate(dt)
-  if (!y) return
-  displayYear.value = y
-  if (m) displayMonth.value = m
-  const padM = String(displayMonth.value || 1).padStart(2, '0')
-  pickerDate.value = `${y}-${padM}-${String(extractDayFromPicker() || 1).padStart(2, '0')}`
-  if (period.value === 'year') {
-    value.value = String(y)
-    dateMenuOpen.value = false
-    load()
-  }
-}
-function normalizeDate(dt) {
-  if (!dt) return {}
-  if (typeof dt === 'string') {
-    const m0 = dt.match(/^(\d{4})(?:-(\d{2})(?:-(\d{2}))?)?/)
-    if (m0) return { y: Number(m0[1]), m: m0[2] ? Number(m0[2]) : undefined, d: m0[3] ? Number(m0[3]) : undefined }
-    return {}
-  }
-  if (typeof dt === 'object') {
-    // Vuetify 常用几种：{year, month, day} / {date:'YYYY-MM-DD'} / JS Date
-    if ('year' in dt && ('month' in dt || 'day' in dt)) {
-      return { y: Number(dt.year), m: dt.month != null ? Number(dt.month) : undefined, d: dt.day != null ? Number(dt.day) : undefined }
-    }
-    if (dt.date) return normalizeDate(dt.date)
-    if (dt instanceof Date && !isNaN(dt.getTime())) {
-      return { y: dt.getFullYear(), m: dt.getMonth() + 1, d: dt.getDate() }
-    }
-  }
-  return {}
-}
-function extractDayFromPicker() {
-  const mm = String(pickerDate.value || '').match(/^\d{4}-\d{2}-(\d{2})/)
-  return mm ? Number(mm[1]) : null
+function pickYear(y) {
+  selYear.value = y
+  value.value = String(y)
+  dateMenuOpen.value = false
+  load()
 }
 
-// ---------- 中文化 ----------
-// 直接传 props；Vuetify 3 VDatePicker 中大部分文案都有对应 prop。
-const monthsZh = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
-const weekdaysAbbrZh = ['日', '一', '二', '三', '四', '五', '六']
-
-// 输入框占位/当前值提示（中文语义化）
-const valuePlaceholder = computed(() => {
-  if (period.value === 'year') return '请选择年份，如 2026'
-  if (period.value === 'month') return '请选择月份，如 2026-08'
-  return '请选择日期，如 2026-08-22'
-})
-
-// 工具栏上 picker 的当前标题（中文化）
-const pickerTitle = computed(() => {
-  if (period.value === 'year') return '选择年份（点击年份方块即选中）'
-  if (period.value === 'month') return '选择月份（点击月份方块即选中，可再点年份切换年）'
-  return '选择日期（点击具体日期；顶部年月可切换）'
-})
-
-// 仅展示具体站点（排除 GLOBAL 汇总行）用于柱状图
+// ---------- 柱状图 / 折线图（原逻辑未动）----------
 const siteRows = computed(() => records.value.filter((r) => r.site !== 'GLOBAL'))
 const maxSiteBytes = computed(() => {
   let m = 0
@@ -262,28 +253,15 @@ const maxSiteBytes = computed(() => {
   }
   return m || 1
 })
-// 柱状图几何
-const barW = 360
-const barH = 26
-const barGap = 14
-const barLabelW = 120
-function barUpWidth(r) {
-  return (Number(r.uploaded || 0) / maxSiteBytes.value) * barW
-}
-function barDownWidth(r) {
-  return (Number(r.downloaded || 0) / maxSiteBytes.value) * barW
-}
-const barSvgHeight = computed(() => siteRows.value.length * (barH + barGap) + 10)
-// 折线图几何
-const lineW = 640
-const lineH = 220
-const linePadL = 48
-const linePadB = 28
+const barW = 360, barH = 26, barGap = 14, barLabelW = 120
+function barUpWidth(r) { return (Number(r.uploaded || 0) / maxSiteBytes.value) * barW }
+function barDownWidth(r) { return (Number(r.downloaded || 0) / maxSiteBytes.value) * barW }
+const barSvgHeight = computed(() => Math.max(60, siteRows.value.length * (barH + barGap) + 10))
+
+const lineW = 640, lineH = 220, linePadL = 48, linePadB = 28
 const maxTrendBytes = computed(() => {
   let m = 0
-  for (const p of trend.value) {
-    m = Math.max(m, Number(p.uploaded || 0), Number(p.downloaded || 0))
-  }
+  for (const p of trend.value) m = Math.max(m, Number(p.uploaded || 0), Number(p.downloaded || 0))
   return m || 1
 })
 function linePoints(field) {
@@ -296,14 +274,12 @@ function linePoints(field) {
       const x = linePadL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW)
       const y = 10 + plotH - (Number(p[field] || 0) / maxTrendBytes.value) * plotH
       return `${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
+    }).join(' ')
 }
 const lineXLabels = computed(() => {
   const n = trend.value.length
   if (n === 0) return []
   const plotW = lineW - linePadL - 10
-  // 最多显示 8 个刻度
   const step = Math.max(1, Math.ceil(n / 8))
   const out = []
   for (let i = 0; i < n; i += step) {
@@ -331,55 +307,112 @@ const lineXLabels = computed(() => {
         style="max-width: 110px"
         variant="outlined"
       />
-      <!-- 日期/月/年选择器：输入框可点弹出日历 -->
+      <!-- 自研选择器：点击输入框弹出中文面板 -->
       <VMenu
         v-model="dateMenuOpen"
-        :close-on-content-click="false"
         location="bottom start"
-        min-width="340"
+        :close-on-content-click="false"
+        min-width="320"
         class="ms-2"
       >
         <template #activator="{ props: menuProps }">
           <VTextField
-            v-model="value"
-            :placeholder="valuePlaceholder"
+            :model-value="valueDisplay || value"
+            readonly
             density="compact"
             hide-details
-            style="max-width: 230px; min-width: 190px"
+            style="max-width: 260px; min-width: 210px"
             variant="outlined"
-            readonly
+            :placeholder="valuePlaceholder"
             append-inner-icon="mdi-calendar"
             v-bind="menuProps"
           />
         </template>
-        <VCard class="pa-0" variant="flat">
-          <!--
-            文案中文化：
-            - title / months / weekdays（缩写）
-            - header 下方给一行使用提示（看 pickerTitle）
-            - 底部按钮：取消 / 今天 / 确定
-          -->
-          <div class="px-3 pt-2 pb-1 text-caption text-medium-emphasis">
-            {{ pickerTitle }}
+        <!-- 自研面板（不依赖 Vuetify VDatePicker 的 locale / adapter） -->
+        <VCard class="dt-calendar-card" variant="elevated">
+          <!-- 顶部紫色大标题：当前「按日/月/年」对应的中文展示 -->
+          <div class="dt-cal-head">
+            <div class="dt-cal-head-label">
+              <span v-if="period === 'year'">选择年份</span>
+              <span v-else-if="period === 'month'">选择月份</span>
+              <span v-else>选择日期</span>
+            </div>
+            <div class="dt-cal-head-value">
+              <template v-if="period === 'day'">
+                {{ selYear }} 年 {{ selMonth }} 月 {{ value?.slice(-2)?.replace(/^-/, '') || today.getDate() }} 日
+              </template>
+              <template v-else-if="period === 'month'">
+                {{ selYear }} 年 {{ selMonth }} 月
+              </template>
+              <template v-else>
+                {{ value || selYear }} 年
+              </template>
+            </div>
           </div>
-          <VDatePicker
-            v-model="pickerDate"
-            color="primary"
-            show-adjacent-months
-            :months="monthsZh"
-            :weekdays="weekdaysAbbrZh"
-            locale="zh-cn"
-            first-day-of-week="1"
-            @click:year="onClickYear"
-            @click:month="onClickMonth"
-            @click:date="onClickDate"
-          />
+          <!-- 工具栏：‹ 当前标题 › -->
+          <div class="dt-cal-toolbar d-flex align-center justify-space-between pa-2">
+            <VBtn variant="text" icon="mdi-chevron-left" size="small" @click="headerLeft" />
+            <div class="dt-cal-toolbar-title">{{ pickerHeaderTitle }}</div>
+            <VBtn variant="text" icon="mdi-chevron-right" size="small" @click="headerRight" />
+          </div>
+
+          <!-- 按日面板：周标题 + 日期网格 -->
+          <div v-if="period === 'day'" class="px-2 pb-2">
+            <div class="dt-wday-row">
+              <div v-for="(w, i) in WDAYS_ZH" :key="i" class="dt-wday">{{ w }}</div>
+            </div>
+            <div class="dt-grid">
+              <button
+                v-for="(g, idx) in grid"
+                :key="idx"
+                type="button"
+                class="dt-day"
+                :class="{
+                  'dt-day-out': !g.inMonth,
+                  'dt-day-today': isToday(g),
+                  'dt-day-selected': isSelectedDay(g),
+                }"
+                @click="pickDay(g)"
+              >{{ g.label }}</button>
+            </div>
+          </div>
+
+          <!-- 按月面板：12 个月 3x4 -->
+          <div v-else-if="period === 'month'" class="px-3 pb-3">
+            <div class="dt-m-grid">
+              <button
+                v-for="(name, i) in MONTHS_ZH"
+                :key="i"
+                type="button"
+                class="dt-m-btn"
+                :class="{ 'dt-selected': selMonth === i + 1 && Number(String(value).slice(0,4)) === selYear }"
+                @click="pickMonth(i + 1)"
+              >{{ name }}</button>
+            </div>
+          </div>
+
+          <!-- 按年面板：12 年 3x4 -->
+          <div v-else class="px-3 pb-3">
+            <div class="dt-m-grid">
+              <button
+                v-for="y in yearGrid"
+                :key="y"
+                type="button"
+                class="dt-m-btn"
+                :class="{ 'dt-selected': String(value) === String(y) }"
+                @click="pickYear(y)"
+              >{{ y }}</button>
+            </div>
+          </div>
+
+          <!-- 底部操作按钮：全部中文 -->
           <div class="d-flex justify-end ga-1 px-2 pb-2">
-            <VBtn size="small" variant="text" @click="onClickDate({ year: new Date().getFullYear(), month: new Date().getMonth() + 1, day: new Date().getDate() })">今天</VBtn>
+            <VBtn size="small" variant="text" @click="goToday">今天</VBtn>
             <VBtn size="small" variant="text" @click="dateMenuOpen = false">关闭</VBtn>
           </div>
         </VCard>
       </VMenu>
+
       <VTextField
         v-model="downloader"
         placeholder="下载器(可选)"
@@ -415,7 +448,6 @@ const lineXLabels = computed(() => {
       </VAlert>
     </div>
     <div v-if="error" class="text-error pa-3">{{ error }}</div>
-    <!-- 汇总卡片 -->
     <div class="dt-cards">
       <VCard variant="tonal" color="green" class="dt-card">
         <div class="text-caption">上传流量</div>
@@ -427,66 +459,49 @@ const lineXLabels = computed(() => {
       </VCard>
       <VCard variant="tonal" class="dt-card">
         <div class="text-caption">分享率</div>
-        <div class="text-h6">
-          {{ totalDown > 0 ? (totalUp / totalDown).toFixed(2) : '—' }}
-        </div>
+        <div class="text-h6">{{ totalDown > 0 ? (totalUp / totalDown).toFixed(2) : '—' }}</div>
       </VCard>
     </div>
-    <!-- 按 PT 站点细分（柱状图） -->
     <VCard class="dt-section" title="按 PT 站点细分">
       <template #text>
         <div v-if="siteRows.length === 0" class="text-medium-emphasis">暂无数据</div>
         <svg v-else :width="barLabelW + barW + 170" :height="barSvgHeight" class="dt-bars">
           <g v-for="(r, i) in siteRows" :key="r.site">
             <text :x="0" :y="i * (barH + barGap) + barH" class="dt-bar-label">{{ r.site }}</text>
-            <!-- 上传 -->
             <rect
               :x="barLabelW"
               :y="i * (barH + barGap) + 2"
               :width="Math.max(1, barUpWidth(r))"
               :height="barH / 2 - 2"
-              fill="#4caf50"
-              rx="2"
+              fill="#4caf50" rx="2"
             />
-            <text
-              :x="barLabelW + barW + 8"
-              :y="i * (barH + barGap) + barH / 2"
-              class="dt-bar-val"
-            >↑ {{ fmtBytes(r.uploaded) }}</text>
-            <!-- 下载 -->
+            <text :x="barLabelW + barW + 8" :y="i * (barH + barGap) + barH / 2" class="dt-bar-val">
+              ↑ {{ fmtBytes(r.uploaded) }}
+            </text>
             <rect
               :x="barLabelW"
               :y="i * (barH + barGap) + barH / 2 + 2"
               :width="Math.max(1, barDownWidth(r))"
               :height="barH / 2 - 2"
-              fill="#2196f3"
-              rx="2"
+              fill="#2196f3" rx="2"
             />
-            <text
-              :x="barLabelW + barW + 8"
-              :y="i * (barH + barGap) + barH + 2"
-              class="dt-bar-val"
-            >↓ {{ fmtBytes(r.downloaded) }}</text>
+            <text :x="barLabelW + barW + 8" :y="i * (barH + barGap) + barH + 2" class="dt-bar-val">
+              ↓ {{ fmtBytes(r.downloaded) }}
+            </text>
           </g>
         </svg>
       </template>
     </VCard>
-    <!-- 时间趋势（折线图） -->
     <VCard class="dt-section" :title="`时间趋势（${period === 'year' ? '逐月' : '逐日'}）`">
       <template #text>
         <div v-if="trend.length === 0" class="text-medium-emphasis">暂无数据</div>
         <svg v-else :width="lineW" :height="lineH" class="dt-line">
-          <!-- 横线 -->
           <line :x1="linePadL" :y1="10" :x2="lineW - 10" :y2="10" stroke="#eee" />
           <line :x1="linePadL" :y1="lineH - linePadB" :x2="lineW - 10" :y2="lineH - linePadB" stroke="#ccc" />
-          <!-- Y 轴最大值 -->
           <text :x="4" :y="16" class="dt-axis">{{ fmtBytes(maxTrendBytes) }}</text>
           <text :x="4" :y="lineH - linePadB" class="dt-axis">0</text>
-          <!-- 上传折线 -->
           <polyline :points="linePoints('uploaded')" fill="none" stroke="#4caf50" stroke-width="2" />
-          <!-- 下载折线 -->
           <polyline :points="linePoints('downloaded')" fill="none" stroke="#2196f3" stroke-width="2" />
-          <!-- X 轴刻度 -->
           <text
             v-for="(t, i) in lineXLabels"
             :key="i"
@@ -502,7 +517,6 @@ const lineXLabels = computed(() => {
         </div>
       </template>
     </VCard>
-    <!-- 明细表 -->
     <VCard class="dt-section" title="明细数据">
       <template #text>
         <VDataTable
@@ -528,14 +542,77 @@ const lineXLabels = computed(() => {
     </VCard>
   </div>
 </template>
+
 <style scoped>
 .dt-page { padding-bottom: 16px; }
 .dt-cards { display: flex; gap: 12px; padding: 12px; flex-wrap: wrap; }
 .dt-card { flex: 1; min-width: 140px; padding: 12px; }
 .dt-section { margin: 12px; }
 .dt-bar-label { font-size: 12px; fill: currentColor; }
-.dt-bar-val { font-size: 11px; fill: currentColor; opacity: 0.8; }
+.dt-bar-val { font-size: 11px; fill: currentColor; opacity: 0.85; }
 .dt-axis { font-size: 10px; fill: #999; }
 .dt-legend { font-size: 12px; padding: 4px 12px; }
 .dt-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 4px 0 12px; vertical-align: middle; }
+
+/* ---------------- 自研中文日历样式 ---------------- */
+.dt-calendar-card { min-width: 300px; width: 312px; padding: 0; overflow: hidden; }
+.dt-cal-head {
+  background: linear-gradient(135deg, #6366f1, #7c3aed);
+  color: #fff;
+  padding: 14px 16px 12px;
+}
+.dt-cal-head-label { font-size: 12px; opacity: 0.9; letter-spacing: 0.4px; }
+.dt-cal-head-value { font-size: 22px; font-weight: 600; margin-top: 4px; line-height: 1.2; }
+.dt-cal-toolbar-title { font-size: 14px; font-weight: 600; color: rgb(var(--v-theme-on-surface, 33 33 33)); }
+
+/* 日面板 */
+.dt-wday-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 2px 0 4px; }
+.dt-wday {
+  text-align: center; font-size: 12px; font-weight: 600;
+  color: rgb(var(--v-theme-primary, 99 102 241) / 0.75);
+  padding: 4px 0;
+}
+.dt-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.dt-day {
+  all: unset; cursor: pointer;
+  height: 32px; border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px; color: inherit;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.05s ease;
+  border: 1px solid transparent;
+}
+.dt-day:hover { background: rgb(var(--v-theme-primary, 99 102 241) / 0.08); }
+.dt-day:active { transform: scale(0.96); }
+.dt-day-out { color: rgba(128, 128, 128, 0.55); }
+.dt-day-today {
+  background: rgb(var(--v-theme-primary, 99 102 241) / 0.08);
+  border-color: rgb(var(--v-theme-primary, 99 102 241) / 0.35);
+  color: rgb(var(--v-theme-primary, 99 102 241));
+  font-weight: 700;
+}
+.dt-day-selected {
+  background: rgb(var(--v-theme-primary, 99 102 241)) !important;
+  color: #fff !important;
+  font-weight: 700;
+}
+
+/* 月/年面板 3x4 网格 */
+.dt-m-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px; }
+.dt-m-btn {
+  all: unset; cursor: pointer;
+  height: 38px; border-radius: 10px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 13px; color: inherit;
+  border: 1px solid rgb(128 128 128 / 0.18);
+  background: transparent;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.05s ease;
+}
+.dt-m-btn:hover { background: rgb(var(--v-theme-primary, 99 102 241) / 0.08); }
+.dt-m-btn:active { transform: scale(0.96); }
+.dt-m-btn.dt-selected {
+  background: rgb(var(--v-theme-primary, 99 102 241));
+  color: #fff;
+  border-color: transparent;
+  font-weight: 600;
+}
 </style>

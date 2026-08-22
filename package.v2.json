@@ -29,11 +29,12 @@
     "name": "下载器流量统计",
     "description": "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点。配置页可从 MP 已配置下载器中选择；支持月度上传阈值超限后自动全局限速。Vue 图表化详情页。",
     "labels": "下载器,流量统计,qBittorrent,Transmission,PT",
-    "version": "1.4.1",
+    "version": "1.4.2",
     "author": "BigRiceFrog",
     "level": 1,
     "v2": true,
     "history": {
+      "v1.4.2": "彻底解决「无法选 + 全英文」两个痛点：不再依赖 Vuetify VDatePicker 的 locale 与 date adapter（宿主通常没加载 zh 包），改为自研 VCard 内嵌中文面板（紫色头部写死「选择日期/月份/年份 + XXXX 年 XX 月 XX 日」、工具栏「‹ 2026 年 8 月 ›」）；按日用原生 7×6 日期网格（含今日/已选中高亮、跨月灰字）、按月 12 格中文月份（1月…12月）、按年 12 年 3×4 网格；三个模式下任何一格点击都直接写 YYYY…/YYYY-MM/YYYY-MM-DD 并立即刷新；输入框显示中文语义化日期。MP 市场版本号升至 1.4.2（远端 Page.vue 已不再包含 VDatePicker 组件调用，dist 同步重建）。",
       "v1.4.1": "交互修复 + 中文化：①去掉 view-mode 限制，改用 click:date / click:month / click:year 三件套——按日时点具体日（不会提前被月粒度卡住）、按月时点月份方块、按年时点年份方块，选中后才会按对应粒度提交并刷新；② VDatePicker 月份/星期头/标题/底部按钮全部中文（月份「1月…12月」、周日…周六「日…六」、标题「选择日期/月份/年份」），并把 VDatePicker locale 设为 zh-cn；③ 版本号同步升到 1.4.1，MP 市场可正常检测更新。",
       "v1.4.0": "修复详情页日期/月/年输入框无法点选的问题：原先是纯文本 VTextField 只能手输，现改为点击输入框弹出 Vuetify VDatePicker 日历；与左侧「按日/按月/按年」下拉联动自动切换日视图/月视图/年视图，选中后自动按当前粒度截断为 YYYY-MM-DD / YYYY-MM / YYYY 并立即刷新图表；前端 dist 同步重建。",
       "v1.0.6": "修复月度阈值判断把本月上传读成 0 的问题：采集只对配置勾选的下载器进行，GLOBAL 行里本就只含生效下载器的数据，此前 _get_month_total 却再按 downloader 名过滤一次，配置标识与写入行的引擎类型（transmission/qbittorrent）命名不一致时会把本月读成 0、导致阈值永不触发；现去掉该冗余过滤，阈值判断与主界面/日志统一以当月 GLOBAL 汇总为准。纯后端改动，无需重建前端。",
