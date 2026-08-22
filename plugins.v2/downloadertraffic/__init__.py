@@ -20,12 +20,22 @@ from typing import Any, Dict, List, Optional, Tuple
 from apscheduler.triggers.cron import CronTrigger
 from fastapi import Request
 
-from app.event import EventType, eventmanager
-from app.helper.downloader import DownloaderHelper
 from app.log import logger
 from app.plugin import _PluginBase
 
-# SitesHelper 用于把 tracker 域名映射到 PT 站点名；若宿主版本路径不同，降级为仅显示域名
+# 以下为可选依赖：不同 MoviePilot 版本/分支的路径或导出名可能不同，
+# 全部做容错导入——缺失时插件仍可加载（仅对应功能降级），避免整插件因 import 失败而消失。
+try:
+    from app.event import EventType, eventmanager
+except Exception:  # pragma: no cover
+    EventType = None
+    eventmanager = None
+
+try:
+    from app.helper.downloader import DownloaderHelper
+except Exception:  # pragma: no cover
+    DownloaderHelper = None
+
 try:
     from app.helper.sites import SitesHelper
 except Exception:  # pragma: no cover
@@ -95,9 +105,15 @@ class DownloaderTraffic(_PluginBase):
             self._downloaders = [str(x).strip() for x in raw if str(x).strip()]
         else:
             self._downloaders = [s.strip() for s in str(raw).split(",") if s.strip()]
-        self._downloader_helper = DownloaderHelper()
+        self._downloader_helper = DownloaderHelper() if DownloaderHelper else None
         self._sites_helper = SitesHelper() if SitesHelper else None
         self.__init_db()
+        # 事件总线注册（可选，失败不影响核心功能）
+        if eventmanager is not None and EventType is not None:
+            try:
+                eventmanager.register(EventType.PluginAction)(self.handle_command)
+            except Exception as e:  # pragma: no cover
+                logger.debug(f"下载器流量统计：事件注册失败 {e}")
 
     def get_state(self) -> bool:
         return self._enabled
@@ -161,6 +177,8 @@ class DownloaderTraffic(_PluginBase):
         }]
 
     def get_command(self) -> List[Dict[str, Any]]:
+        if EventType is None:
+            return []
         return [{
             "cmd": "/downloader_traffic_collect",
             "event": EventType.PluginAction,
@@ -169,7 +187,6 @@ class DownloaderTraffic(_PluginBase):
             "data": {"action": "downloader_traffic_collect"}
         }]
 
-    @eventmanager.register(EventType.PluginAction)
     def handle_command(self, event):
         if not event or not event.event_data:
             return
@@ -316,6 +333,9 @@ class DownloaderTraffic(_PluginBase):
         month = now.strftime("%Y-%m")
         ts = int(now.timestamp())
 
+        if self._downloader_helper is None:
+            logger.error("下载器流量统计：DownloaderHelper 不可用，无法采集")
+            return
         services = self._downloader_helper.get_services(
             name_filters=self._downloaders or None
         )
