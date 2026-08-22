@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """
 下载器流量统计插件 (MoviePilot V2)
 
@@ -186,7 +186,7 @@ class DownloaderTraffic(_PluginBase):
 
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.4.2"
+    plugin_version = "1.4.3"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -1426,3 +1426,4 @@ class DownloaderTraffic(_PluginBase):
                 """,
                 snapshots
             )
+
