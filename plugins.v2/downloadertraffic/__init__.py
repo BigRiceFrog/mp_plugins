@@ -187,7 +187,7 @@ class DownloaderTraffic(_PluginBase):
 
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.4.4"
+    plugin_version = "1.4.5"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -1068,6 +1068,8 @@ class DownloaderTraffic(_PluginBase):
 
         # 取上次采集时间戳：首次见到的种子若 added_on > last_ts，说明是
         # 上次采集之后新添加的，其当前累计上传/下载应计入当次增量（而非丢弃）。
+        # last_ts=0 时（首次运行/清空历史后）用今天零点做 fallback：
+        # 今天添加的种子计入，更早的只建基准。
         last_ts = 0
         try:
             with self._db_lock:
@@ -1078,6 +1080,11 @@ class DownloaderTraffic(_PluginBase):
                 last_ts = int(row[0])
         except Exception:
             pass
+        if not last_ts:
+            import datetime as _dt
+            last_ts = int(_dt.datetime.now()
+                          .replace(hour=0, minute=0, second=0, microsecond=0)
+                          .timestamp())
 
         for t in torrents:
             thash = _field_multi(t, "hash")

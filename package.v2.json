@@ -29,11 +29,12 @@
     "name": "下载器流量统计",
     "description": "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点。配置页可从 MP 已配置下载器中选择；支持月度上传阈值超限后自动全局限速。Vue 图表化详情页。",
     "labels": "下载器,流量统计,qBittorrent,Transmission,PT",
-    "version": "1.4.4",
+    "version": "1.4.5",
     "author": "BigRiceFrog",
     "level": 1,
     "v2": true,
     "history": {
+      "v1.4.5": "修复 v1.4.4 的 fallback 缺陷：首次运行或清空历史数据后 last_ts=0（无快照），原条件 0 and ... 为 falsy → 今天新增种子也走 else 被丢弃。改为 last_ts=0 时用今天零点做阈值：今天添加的种子计入，更早的只建基准。纯后端改动。",
       "v1.4.4": "修复两个采集 bug：① qBittorrent 的 tracker 字段是单个 URL 字符串，被当作列表逐字符遍历 → 站点识别为首个字符（如 site=h），现加 isinstance(str) 包装为列表；② 新添加种子的下载量不计入：首次见到的种子若 added_on > 上次采集时间戳，说明是本采集周期内新增的，其当前累计上传/下载应全额计入（而非建基准丢弃），修复用户 8:55 加种子后下载量显示 0 的问题。纯后端改动。",
       "v1.4.3": "补发布包：v1.4.2 版本误将 plugins.v2/downloadertraffic/dist/assets 全部 8 个 bundle 漏提交（实际远端无 dist 目录），导致 MP 无论如何更新都命中降级/旧缓存，仍显示英文 Vuetify 面板（Sat, Aug 22 / Jan..Dec）、无法点选日、选月后头部不变更也不刷新数据。本版本把自研中文面板的 dist/index.html + assets/ 全部 bundle 真实上传至远端，并同步将 MP 市场版本号升到 1.4.3，确保一次更新即可切换为中文面板。",
       "v1.4.2": "彻底解决「无法选 + 全英文」两个痛点：不再依赖 Vuetify VDatePicker 的 locale 与 date adapter（宿主通常没加载 zh 包），改为自研 VCard 内嵌中文面板（紫色头部写死「选择日期/月份/年份 + XXXX 年 XX 月 XX 日」、工具栏「‹ 2026 年 8 月 ›」）；按日用原生 7×6 日期网格（含今日/已选中高亮、跨月灰字）、按月 12 格中文月份（1月…12月）、按年 12 年 3×4 网格；三个模式下任何一格点击都直接写 YYYY…/YYYY-MM/YYYY-MM-DD 并立即刷新；输入框显示中文语义化日期。MP 市场版本号升至 1.4.2（远端 Page.vue 已不再包含 VDatePicker 组件调用，dist 同步重建）。",
