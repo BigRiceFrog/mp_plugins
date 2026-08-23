@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 下载器流量统计插件 (MoviePilot V2)
 
@@ -100,6 +100,7 @@ _FIELD_ALIASES = {
     "uploaded": ("uploaded", "uploaded_ever", "uploadedEver", "uploaded_total", "total_uploaded", "up"),
     "downloaded": ("downloaded", "downloaded_ever", "downloadedEver", "downloaded_total", "total_downloaded", "down"),
     "trackers": ("trackers", "tracker", "tracker_list"),
+    "added_on": ("added_on", "added_date", "date_added", "creation_date"),
 }
 
 
@@ -186,7 +187,7 @@ class DownloaderTraffic(_PluginBase):
 
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.4.3"
+    plugin_version = "1.4.4"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -915,6 +916,8 @@ class DownloaderTraffic(_PluginBase):
                             keys = [a for a in dir(sample) if not a.startswith("_")][:60]
                         logger.info(f"下载器流量统计：种子字段样例({dtype})：{keys}")
                         _sample_trackers = _field_multi(sample, "trackers", default=[]) or []
+                        if isinstance(_sample_trackers, str):
+                            _sample_trackers = [_sample_trackers]
                         logger.info(
                             f"下载器流量统计：样本种子取值({dtype})："
                             f"hash={_field_multi(sample, 'hash')} "
@@ -1063,6 +1066,19 @@ class DownloaderTraffic(_PluginBase):
         new_snapshots: List[Tuple[str, str, int, int, int]] = []
         skipped = 0
 
+        # 取上次采集时间戳：首次见到的种子若 added_on > last_ts，说明是
+        # 上次采集之后新添加的，其当前累计上传/下载应计入当次增量（而非丢弃）。
+        last_ts = 0
+        try:
+            with self._db_lock:
+                row = self._db.execute(
+                    "SELECT MAX(ts) FROM torrent_snapshots"
+                ).fetchone()
+            if row and row[0]:
+                last_ts = int(row[0])
+        except Exception:
+            pass
+
         for t in torrents:
             thash = _field_multi(t, "hash")
             if not thash:
@@ -1071,6 +1087,8 @@ class DownloaderTraffic(_PluginBase):
             up = int(_field_multi(t, "uploaded", default=0) or 0)
             down = int(_field_multi(t, "downloaded", default=0) or 0)
             trackers = _field_multi(t, "trackers", default=[]) or []
+            if isinstance(trackers, str):
+                trackers = [trackers]
             site = self._resolve_site(trackers)
 
             prev = self._get_snapshot(thash, dtype)
@@ -1083,12 +1101,23 @@ class DownloaderTraffic(_PluginBase):
                 if ddown < 0:
                     ddown = 0
             else:
-                # 首次见到该种子：只建立基准快照，不把历史累计计入当月。
-                # 下载器返回的是“生命周期累计值”，没有按月的历史流量；若首采就按累计值
-                # 整段回填，会把前几个月上传的历史量误算进当月（可能形成 1.4T 级别的
-                # 虚高，并误触发月度限速）。改为从此刻起只统计新增增量更符合「月上报」口径。
-                dup = 0
-                ddown = 0
+                # 首次见到该种子。下载器返回的是"生命周期累计值"——若直接整段回填
+                # 会把前几个月的历史量误算进当月（v1.0.5 的教训）。但如果该种子是
+                # 上次采集之后才添加的（added_on > last_ts），其当前累计值就是本次
+                # 采集周期内产生的，应全额计入，而不是丢弃。
+                added_on = _field_multi(t, "added_on", default=0) or 0
+                try:
+                    added_on = int(added_on)
+                except (TypeError, ValueError):
+                    added_on = 0
+                if last_ts and added_on and added_on > last_ts:
+                    # 本次采集周期内新增的种子：当前累计值即为本次增量
+                    dup = up
+                    ddown = down
+                else:
+                    # 旧种子（插件刚安装/种子早于采集周期）：只建基准，不回填历史
+                    dup = 0
+                    ddown = 0
 
             if dup or ddown:
                 bucket = delta_by_site.setdefault(site, {"up": 0, "down": 0})
