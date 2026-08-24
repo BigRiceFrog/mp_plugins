@@ -68,6 +68,7 @@ const local = ref({
   recovery_download_kb: 0,
   recovery_cron: '30 0 1 * *',
   retention_days: 90,
+  site_domain_map: '',
 });
 
 const downloaderItems = ref([]);
@@ -183,6 +184,7 @@ onMounted(async () => {
     recovery_download_kb: c.recovery_download_kb || 0,
     recovery_cron: c.recovery_cron || '30 0 1 * *',
     retention_days: c.retention_days ?? 90,
+    site_domain_map: c.site_domain_map || '',
   };
 
   if (props.api && props.api.get) {
@@ -214,6 +216,7 @@ return (_ctx, _cache) => {
   const _component_VSwitch = _resolveComponent("VSwitch");
   const _component_VTextField = _resolveComponent("VTextField");
   const _component_VSelect = _resolveComponent("VSelect");
+  const _component_VTextarea = _resolveComponent("VTextarea");
   const _component_VCardTitle = _resolveComponent("VCardTitle");
   const _component_VCardText = _resolveComponent("VCardText");
   const _component_VCardActions = _resolveComponent("VCardActions");
@@ -226,7 +229,7 @@ return (_ctx, _cache) => {
       color: "transparent"
     }, {
       default: _withCtx(() => [
-        _cache[14] || (_cache[14] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计 · 配置", -1)),
+        _cache[15] || (_cache[15] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计 · 配置", -1)),
         _createVNode(_component_VSpacer),
         _createVNode(_component_VBtn, {
           icon: "mdi-content-save",
@@ -265,7 +268,7 @@ return (_ctx, _cache) => {
           loading: collectBusy.value,
           onClick: doCollect
         }, {
-          default: _withCtx(() => [...(_cache[15] || (_cache[15] = [
+          default: _withCtx(() => [...(_cache[16] || (_cache[16] = [
             _createTextVNode("立即采集流量", -1)
           ]))]),
           _: 1
@@ -276,7 +279,7 @@ return (_ctx, _cache) => {
           loading: limitBusy.value,
           onClick: doTestLimit
         }, {
-          default: _withCtx(() => [...(_cache[16] || (_cache[16] = [
+          default: _withCtx(() => [...(_cache[17] || (_cache[17] = [
             _createTextVNode("测试限速", -1)
           ]))]),
           _: 1
@@ -287,7 +290,7 @@ return (_ctx, _cache) => {
           loading: resetBusy.value,
           onClick: doReset
         }, {
-          default: _withCtx(() => [...(_cache[17] || (_cache[17] = [
+          default: _withCtx(() => [...(_cache[18] || (_cache[18] = [
             _createTextVNode("测试月初恢复", -1)
           ]))]),
           _: 1
@@ -298,7 +301,7 @@ return (_ctx, _cache) => {
           density: "comfortable",
           onClick: openClearDialog
         }, {
-          default: _withCtx(() => [...(_cache[18] || (_cache[18] = [
+          default: _withCtx(() => [...(_cache[19] || (_cache[19] = [
             _createTextVNode("清空历史数据", -1)
           ]))]),
           _: 1
@@ -416,11 +419,22 @@ return (_ctx, _cache) => {
         variant: "outlined",
         hint: "每次采集自动删除超过该天数的历史记录；0=不自动清理。建议 90~180 天",
         "persistent-hint": ""
+      }, null, 8, ["modelValue"]),
+      _createVNode(_component_VTextarea, {
+        modelValue: local.value.site_domain_map,
+        "onUpdate:modelValue": _cache[11] || (_cache[11] = $event => ((local.value.site_domain_map) = $event)),
+        label: "手动站点域名映射",
+        rows: "3",
+        class: "mt-3",
+        variant: "outlined",
+        placeholder: "AGSVPT=tracker.agsvpt.cn",
+        hint: "每行一条「站点名=域名」，多个域名用逗号分隔。用于 tracker 域名与站点设置域名不一致的站点（如 AGSVPT 站点填 agsvpt.com 但 tracker 是 tracker.agsvpt.cn）；留空=不启用",
+        "persistent-hint": ""
       }, null, 8, ["modelValue"])
     ]),
     _createVNode(_component_VDialog, {
       modelValue: clearDialog.value,
-      "onUpdate:modelValue": _cache[13] || (_cache[13] = $event => ((clearDialog).value = $event)),
+      "onUpdate:modelValue": _cache[14] || (_cache[14] = $event => ((clearDialog).value = $event)),
       "max-width": "440",
       persistent: ""
     }, {
@@ -428,34 +442,34 @@ return (_ctx, _cache) => {
         _createVNode(_component_VCard, null, {
           default: _withCtx(() => [
             _createVNode(_component_VCardTitle, { class: "text-error" }, {
-              default: _withCtx(() => [...(_cache[19] || (_cache[19] = [
+              default: _withCtx(() => [...(_cache[20] || (_cache[20] = [
                 _createTextVNode("清空全部历史数据？", -1)
               ]))]),
               _: 1
             }),
             _createVNode(_component_VCardText, null, {
               default: _withCtx(() => [
-                _cache[20] || (_cache[20] = _createElementVNode("p", null, [
+                _cache[21] || (_cache[21] = _createElementVNode("p", null, [
                   _createTextVNode("此操作将"),
                   _createElementVNode("strong", null, "永久删除"),
                   _createTextVNode("插件已采集的所有历史流量记录（含种子基准快照），"),
                   _createElementVNode("strong", null, "不可恢复"),
                   _createTextVNode("。")
                 ], -1)),
-                _cache[21] || (_cache[21] = _createElementVNode("p", null, [
+                _cache[22] || (_cache[22] = _createElementVNode("p", null, [
                   _createTextVNode("清空后，下一次采集会以各种子当前累计值为基准"),
                   _createElementVNode("strong", null, "重新入账"),
                   _createTextVNode("。")
                 ], -1)),
                 _createVNode(_component_VTextField, {
                   modelValue: clearInput.value,
-                  "onUpdate:modelValue": _cache[11] || (_cache[11] = $event => ((clearInput).value = $event)),
+                  "onUpdate:modelValue": _cache[12] || (_cache[12] = $event => ((clearInput).value = $event)),
                   label: "请输入「清空」以确认",
                   variant: "outlined",
                   dense: "",
                   class: "mt-2",
                   disabled: clearBusy.value,
-                  onKeyup: _cache[12] || (_cache[12] = _withKeys($event => (clearOk.value && !clearBusy.value && doClear()), ["enter"]))
+                  onKeyup: _cache[13] || (_cache[13] = _withKeys($event => (clearOk.value && !clearBusy.value && doClear()), ["enter"]))
                 }, null, 8, ["modelValue", "disabled"])
               ]),
               _: 1
@@ -468,7 +482,7 @@ return (_ctx, _cache) => {
                   disabled: clearBusy.value,
                   onClick: closeClearDialog
                 }, {
-                  default: _withCtx(() => [...(_cache[22] || (_cache[22] = [
+                  default: _withCtx(() => [...(_cache[23] || (_cache[23] = [
                     _createTextVNode("取消", -1)
                   ]))]),
                   _: 1
@@ -480,7 +494,7 @@ return (_ctx, _cache) => {
                   loading: clearBusy.value,
                   onClick: doClear
                 }, {
-                  default: _withCtx(() => [...(_cache[23] || (_cache[23] = [
+                  default: _withCtx(() => [...(_cache[24] || (_cache[24] = [
                     _createTextVNode("确认清空", -1)
                   ]))]),
                   _: 1

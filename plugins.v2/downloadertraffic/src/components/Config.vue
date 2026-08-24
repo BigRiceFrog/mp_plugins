@@ -45,6 +45,7 @@ const local = ref({
   recovery_download_kb: 0,
   recovery_cron: '30 0 1 * *',
   retention_days: 90,
+  site_domain_map: '',
 })
 
 const downloaderItems = ref([])
@@ -160,6 +161,7 @@ onMounted(async () => {
     recovery_download_kb: c.recovery_download_kb || 0,
     recovery_cron: c.recovery_cron || '30 0 1 * *',
     retention_days: c.retention_days ?? 90,
+    site_domain_map: c.site_domain_map || '',
   }
 
   if (props.api && props.api.get) {
@@ -314,6 +316,16 @@ function save() {
         class="mt-3"
         variant="outlined"
         hint="每次采集自动删除超过该天数的历史记录；0=不自动清理。建议 90~180 天"
+        persistent-hint
+      />
+      <VTextarea
+        v-model="local.site_domain_map"
+        label="手动站点域名映射"
+        rows="3"
+        class="mt-3"
+        variant="outlined"
+        placeholder="AGSVPT=tracker.agsvpt.cn"
+        hint="每行一条「站点名=域名」，多个域名用逗号分隔。用于 tracker 域名与站点设置域名不一致的站点（如 AGSVPT 站点填 agsvpt.com 但 tracker 是 tracker.agsvpt.cn）；留空=不启用"
         persistent-hint
       />
     </div>

@@ -181,13 +181,43 @@ def _extract_domain(url: str) -> str:
     return s.lower()
 
 
+def _parse_site_domain_map(raw) -> List[Tuple[str, str]]:
+    """解析「手动站点域名映射」配置。
+
+    每行一条「站点名=域名」，多个域名用英文/中文逗号分隔；支持 # 注释。
+    用于 tracker 域名与 MP 站点设置域名不一致的站点（如 AGSVPT 站点填 agsvpt.com、
+    但 tracker 是 tracker.agsvpt.cn），手动指定后即可正确归属。
+    """
+    result: List[Tuple[str, str]] = []
+    if not raw:
+        return result
+    if isinstance(raw, (list, tuple)):
+        lines = [str(x) for x in raw]
+    else:
+        lines = str(raw).replace("；", ";").splitlines()
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        sep = "=" if "=" in line else (":" if ":" in line else None)
+        if not sep:
+            continue
+        name, dom_part = line.split(sep, 1)
+        name = name.strip()
+        dom_part = dom_part.strip()
+        if not name or not dom_part:
+            continue
+        result.append((name, dom_part))
+    return result
+
+
 class DownloaderTraffic(_PluginBase):
     # 站点映射诊断日志去重（只对前几个不同的 host 打一次，避免每条种子刷屏）
     _diag_hosts: set = set()
 
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.5.0"
+    plugin_version = "1.6.0"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -254,6 +284,7 @@ class DownloaderTraffic(_PluginBase):
             self._retention_days = int(config.get("retention_days") or 90)
         except (ValueError, TypeError):
             self._retention_days = 90
+        self._site_domain_map = _parse_site_domain_map(config.get("site_domain_map") or "")
         self.__init_db()
         self._cleanup_bad_site_rows()
         self._migrate_site_rows()
@@ -477,6 +508,20 @@ class DownloaderTraffic(_PluginBase):
                                     "hint": "每次采集时自动删除超过该天数的历史记录（0=不自动清理）；建议保留 90~180 天"
                                 }
                             }]
+                        },
+                        {
+                            "component": "VCol",
+                            "props": {"cols": 12, "md": 12},
+                            "content": [{
+                                "component": "VTextarea",
+                                "props": {
+                                    "model": "site_domain_map",
+                                    "label": "手动站点域名映射",
+                                    "rows": 3,
+                                    "placeholder": "AGSVPT=tracker.agsvpt.cn",
+                                    "hint": "每行一条「站点名=域名」，多个域名用逗号分隔。用于 tracker 域名与站点设置域名不一致的站点（如 AGSVPT 站点填 agsvpt.com 但 tracker 是 tracker.agsvpt.cn）；留空=不启用"
+                                }
+                            }]
                         }
                     ]
                 }
@@ -491,7 +536,8 @@ class DownloaderTraffic(_PluginBase):
             "recovery_speed_kb": 0,
             "recovery_download_kb": 0,
             "recovery_cron": "30 0 1 * *",
-            "retention_days": 90
+            "retention_days": 90,
+            "site_domain_map": ""
         }
 
     # =====================================================================
@@ -1201,6 +1247,11 @@ class DownloaderTraffic(_PluginBase):
             if key not in seen:
                 seen.add(key)
                 yield name, dom
+
+        # 0) 手动站点域名映射（最高优先级）：解决 tracker 域名与站点设置域名不一致的站点
+        for name, dom in self._site_domain_map:
+            for d in _emit(name, dom):
+                yield d
 
         # 1) SiteOper：站点设置里配置的站点（最贴合期望的站点名）
         try:
