@@ -17,6 +17,7 @@ const _hoisted_4 = { class: "d-flex ga-2 mb-3 flex-wrap" };
 const {ref,computed,onMounted} = await importShared('vue');
 
 
+
 const _sfc_main = {
   __name: 'Config',
   props: {
@@ -38,12 +39,14 @@ const _sfc_main = {
 
 const props = __props;
 const emit = __emit;
+
 // 后端 API 路由以插件类名 DownloaderTraffic 为前缀注册
 const pid = computed(() => {
   const v = props.pluginId;
   return v && v !== 'downloadertraffic' ? v : 'DownloaderTraffic'
 });
 const base = computed(() => `plugin/${pid.value}`);
+
 // api.get 直接返回响应体（MP 前端拦截器已解包 response.data）；
 // 个别宿主若返回 axios 响应对象则解一层 .data
 function unwrap(res) {
@@ -53,6 +56,7 @@ function unwrap(res) {
   }
   return res
 }
+
 const local = ref({
   enabled: false,
   cron: '*/30 * * * *',
@@ -65,6 +69,7 @@ const local = ref({
   recovery_cron: '30 0 1 * *',
   retention_days: 90,
 });
+
 const downloaderItems = ref([]);
 const loadingItems = ref(false);
 const collectBusy = ref(false);
@@ -76,9 +81,11 @@ const clearDialog = ref(false);
 const clearInput = ref('');
 const clearBusy = ref(false);
 const clearOk = computed(() => clearInput.value.trim() === '清空');
+
 function showAction(msg, isError = false) {
   actionMsg.value = isError ? msg : `✅ ${msg}`;
 }
+
 async function doCollect() {
   collectBusy.value = true;
   actionMsg.value = '';
@@ -92,6 +99,7 @@ async function doCollect() {
     collectBusy.value = false;
   }
 }
+
 // 测试「超限限速」：按 limit_speed_kb 限速
 async function doTestLimit() {
   limitBusy.value = true;
@@ -111,6 +119,7 @@ async function doTestLimit() {
     limitBusy.value = false;
   }
 }
+
 // 测试「月初恢复」：按 recovery_speed_kb 恢复限速
 async function doReset() {
   resetBusy.value = true;
@@ -130,6 +139,7 @@ async function doReset() {
     resetBusy.value = false;
   }
 }
+
 // 清空历史数据 —— 二次确认：先弹框，须输入「清空」才能执行
 function openClearDialog() {
   clearInput.value = '';
@@ -158,6 +168,7 @@ async function doClear() {
     clearInput.value = '';
   }
 }
+
 onMounted(async () => {
   const c = props.initialConfig || {};
   const dl = c.downloaders;
@@ -173,6 +184,7 @@ onMounted(async () => {
     recovery_cron: c.recovery_cron || '30 0 1 * *',
     retention_days: c.retention_days ?? 90,
   };
+
   if (props.api && props.api.get) {
     loadingItems.value = true;
     try {
@@ -188,6 +200,7 @@ onMounted(async () => {
     }
   }
 });
+
 function save() {
   emit('save', { ...local.value });
 }

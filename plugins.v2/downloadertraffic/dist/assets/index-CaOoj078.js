@@ -1,5 +1,5 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
-import Page from './__federation_expose_Page-CRonGG58.js';
+import Page from './__federation_expose_Page-DC1-oQLl.js';
 
 true&&(function polyfill() {
   const relList = document.createElement("link").relList;
@@ -40,5 +40,6 @@ true&&(function polyfill() {
 }());
 
 const {createApp} = await importShared('vue');
+
 // 仅用于本地 dev 预览；宿主通过模块联邦加载 remoteEntry.js，不会用到此入口。
 createApp(Page).mount('#app');

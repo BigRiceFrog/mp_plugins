@@ -8,6 +8,7 @@ const _hoisted_1 = { class: "pa-2" };
 const {ref,onMounted,computed} = await importShared('vue');
 
 
+
 const _sfc_main = {
   __name: 'Dashboard',
   props: {
@@ -23,6 +24,7 @@ const _sfc_main = {
   setup(__props) {
 
 const props = __props;
+
 const base = computed(() => {
   const v = props.pluginId;
   // 后端 API 路由以插件类名 DownloaderTraffic 为前缀注册
@@ -31,6 +33,7 @@ const base = computed(() => {
 const loading = ref(false);
 const up = ref(0);
 const down = ref(0);
+
 function fmtBytes(n) {
   const num = Number(n || 0);
   if (num >= 1024 ** 4) return (num / 1024 ** 4).toFixed(2) + ' TB'
@@ -38,6 +41,7 @@ function fmtBytes(n) {
   if (num >= 1024 ** 2) return (num / 1024 ** 2).toFixed(2) + ' MB'
   return (num / 1024).toFixed(1) + ' KB'
 }
+
 async function load() {
   loading.value = true;
   try {
@@ -52,6 +56,7 @@ async function load() {
     loading.value = false;
   }
 }
+
 onMounted(load);
 
 return (_ctx, _cache) => {
