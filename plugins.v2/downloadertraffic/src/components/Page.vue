@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import CalendarPanel from './CalendarPanel.vue'
 import PieChart from './PieChart.vue'
 const props = defineProps({
@@ -19,7 +19,6 @@ const props = defineProps({
 const emit = defineEmits(['close'])
 const period = ref('month')
 const value = ref('')
-const downloader = ref('')
 const loading = ref(false)
 const error = ref('')
 const records = ref([])
@@ -95,7 +94,6 @@ async function load() {
   if (!value.value) value.value = defaultValue()
   try {
     const q = new URLSearchParams({ period: period.value, value: value.value })
-    if (downloader.value) q.set('downloader', downloader.value)
     const [r1, r2] = await Promise.all([
       props.api.get(`${base.value}/records?${q.toString()}`),
       props.api.get(`${base.value}/trend?${q.toString()}`),
@@ -118,6 +116,10 @@ onMounted(() => {
   load()
   loadMonthPie()
   loadDayPie()
+  observeTrendWidth()
+})
+onUnmounted(() => {
+  if (trendRO) trendRO.disconnect()
 })
 watch(period, () => {
   value.value = defaultValue()
@@ -175,8 +177,19 @@ async function loadDayPie() {
   }
 }
 
-// ---------- 折线图（原逻辑未动）----------
-const lineW = 640, lineH = 220, linePadL = 48, linePadB = 28
+// ---------- 折线图（自适应容器宽度，避免只占左半屏）----------
+const lineH = 220, linePadL = 48, linePadB = 28
+const trendW = ref(640)
+const trendWrap = ref(null)
+let trendRO = null
+function observeTrendWidth() {
+  if (!trendWrap.value || typeof ResizeObserver === 'undefined') return
+  trendRO = new ResizeObserver((entries) => {
+    const w = entries[0]?.contentRect?.width
+    if (w > 0) trendW.value = Math.max(320, Math.floor(w))
+  })
+  trendRO.observe(trendWrap.value)
+}
 const maxTrendBytes = computed(() => {
   let m = 0
   for (const p of trend.value) m = Math.max(m, Number(p.uploaded || 0), Number(p.downloaded || 0))
@@ -185,7 +198,7 @@ const maxTrendBytes = computed(() => {
 function linePoints(field) {
   const n = trend.value.length
   if (n === 0) return ''
-  const plotW = lineW - linePadL - 10
+  const plotW = trendW.value - linePadL - 10
   const plotH = lineH - linePadB - 10
   return trend.value
     .map((p, i) => {
@@ -197,7 +210,7 @@ function linePoints(field) {
 const lineXLabels = computed(() => {
   const n = trend.value.length
   if (n === 0) return []
-  const plotW = lineW - linePadL - 10
+  const plotW = trendW.value - linePadL - 10
   const step = Math.max(1, Math.ceil(n / 8))
   const out = []
   for (let i = 0; i < n; i += step) {
@@ -230,15 +243,6 @@ const lineXLabels = computed(() => {
         <CalendarPanel v-model="value" :mode="period" @close="load" />
       </div>
 
-      <VTextField
-        v-model="downloader"
-        placeholder="下载器(可选)"
-        density="compact"
-        hide-details
-        style="max-width: 150px"
-        variant="outlined"
-        class="ms-2"
-      />
       <VBtn icon="mdi-refresh" variant="text" :loading="loading" class="ms-2" @click="load" />
       <VBtn
         color="primary"
@@ -309,23 +313,25 @@ const lineXLabels = computed(() => {
     </VCard>
     <VCard class="dt-section" :title="`时间趋势（${period === 'year' ? '逐月' : '逐日'}）`">
       <template #text>
-        <div v-if="trend.length === 0" class="text-medium-emphasis">暂无数据</div>
-        <svg v-else :width="lineW" :height="lineH" class="dt-line">
-          <line :x1="linePadL" :y1="10" :x2="lineW - 10" :y2="10" stroke="#eee" />
-          <line :x1="linePadL" :y1="lineH - linePadB" :x2="lineW - 10" :y2="lineH - linePadB" stroke="#ccc" />
-          <text :x="4" :y="16" class="dt-axis">{{ fmtBytes(maxTrendBytes) }}</text>
-          <text :x="4" :y="lineH - linePadB" class="dt-axis">0</text>
-          <polyline :points="linePoints('uploaded')" fill="none" stroke="#4caf50" stroke-width="2" />
-          <polyline :points="linePoints('downloaded')" fill="none" stroke="#2196f3" stroke-width="2" />
-          <text
-            v-for="(t, i) in lineXLabels"
-            :key="i"
-            :x="t.x"
-            :y="lineH - linePadB + 16"
-            class="dt-axis"
-            text-anchor="middle"
-          >{{ t.label }}</text>
-        </svg>
+        <div ref="trendWrap" class="dt-line-wrap">
+          <div v-if="trend.length === 0" class="text-medium-emphasis">暂无数据</div>
+          <svg v-else :width="trendW" :height="lineH" class="dt-line">
+            <line :x1="linePadL" :y1="10" :x2="trendW - 10" :y2="10" stroke="#eee" />
+            <line :x1="linePadL" :y1="lineH - linePadB" :x2="trendW - 10" :y2="lineH - linePadB" stroke="#ccc" />
+            <text :x="4" :y="16" class="dt-axis">{{ fmtBytes(maxTrendBytes) }}</text>
+            <text :x="4" :y="lineH - linePadB" class="dt-axis">0</text>
+            <polyline :points="linePoints('uploaded')" fill="none" stroke="#4caf50" stroke-width="2" />
+            <polyline :points="linePoints('downloaded')" fill="none" stroke="#2196f3" stroke-width="2" />
+            <text
+              v-for="(t, i) in lineXLabels"
+              :key="i"
+              :x="t.x"
+              :y="lineH - linePadB + 16"
+              class="dt-axis"
+              text-anchor="middle"
+            >{{ t.label }}</text>
+          </svg>
+        </div>
         <div class="dt-legend">
           <span class="dt-dot" style="background: #4caf50" /> 上传
           <span class="dt-dot" style="background: #2196f3" /> 下载
@@ -364,6 +370,8 @@ const lineXLabels = computed(() => {
 .dt-card { flex: 1; min-width: 140px; padding: 12px; }
 .dt-section { margin: 12px; }
 .dt-axis { font-size: 10px; fill: #999; }
+.dt-line-wrap { width: 100%; }
+.dt-line { display: block; max-width: 100%; }
 .dt-legend { font-size: 12px; padding: 4px 12px; }
 .dt-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin: 0 4px 0 12px; vertical-align: middle; }
 

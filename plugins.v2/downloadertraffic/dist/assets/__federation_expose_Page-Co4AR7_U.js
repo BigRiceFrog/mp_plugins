@@ -31,16 +31,16 @@ const _hoisted_13$2 = {
   class: "px-3 pb-3"
 };
 const _hoisted_14$2 = { class: "dt-m-grid" };
-const _hoisted_15$1 = ["onClick"];
-const _hoisted_16$1 = {
+const _hoisted_15$2 = ["onClick"];
+const _hoisted_16$2 = {
   key: 2,
   class: "px-3 pb-3"
 };
-const _hoisted_17$1 = { class: "dt-m-grid" };
+const _hoisted_17$2 = { class: "dt-m-grid" };
 const _hoisted_18$1 = ["onClick"];
 const _hoisted_19$1 = { class: "d-flex justify-end ga-1 px-2 pb-2" };
 
-const {ref: ref$1,computed: computed$2,watch: watch$1} = await importShared('vue');
+const {ref: ref$2,computed: computed$2,watch: watch$1} = await importShared('vue');
 
 
 // 自研中文日期/月/年选择面板（不依赖 Vuetify 内部本地化 / locale / date adapter）
@@ -61,10 +61,10 @@ const emit = __emit;
 const MONTHS_ZH = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 const WDAYS_ZH = ['日', '一', '二', '三', '四', '五', '六'];
 
-const menuOpen = ref$1(false);
-const selYear = ref$1(new Date().getFullYear());
-const selMonth = ref$1(new Date().getMonth() + 1); // 1..12
-const yearPageBase = ref$1(new Date().getFullYear() - 5);
+const menuOpen = ref$2(false);
+const selYear = ref$2(new Date().getFullYear());
+const selMonth = ref$2(new Date().getMonth() + 1); // 1..12
+const yearPageBase = ref$2(new Date().getFullYear() - 5);
 
 function pad2(n) { return String(n).padStart(2, '0') }
 function defaultValue() {
@@ -279,12 +279,12 @@ return (_ctx, _cache) => {
                         type: "button",
                         class: _normalizeClass(["dt-m-btn", { 'dt-selected': selMonth.value === i + 1 && Number(String(__props.modelValue).slice(0, 4)) === selYear.value }]),
                         onClick: $event => (pickMonth(i + 1))
-                      }, _toDisplayString$2(name), 11, _hoisted_15$1)
+                      }, _toDisplayString$2(name), 11, _hoisted_15$2)
                     }), 64))
                   ])
                 ]))
-              : (_openBlock$2(), _createElementBlock$2("div", _hoisted_16$1, [
-                  _createElementVNode$2("div", _hoisted_17$1, [
+              : (_openBlock$2(), _createElementBlock$2("div", _hoisted_16$2, [
+                  _createElementVNode$2("div", _hoisted_17$2, [
                     (_openBlock$2(true), _createElementBlock$2(_Fragment$2, null, _renderList$2(yearGrid.value, (y) => {
                       return (_openBlock$2(), _createElementBlock$2("button", {
                         key: y,
@@ -351,22 +351,26 @@ const _hoisted_7$1 = {
   key: 1,
   class: "pc-body"
 };
-const _hoisted_8$1 = ["viewBox"];
-const _hoisted_9$1 = ["d", "fill"];
-const _hoisted_10$1 = ["x", "y"];
-const _hoisted_11$1 = { class: "pc-legend" };
-const _hoisted_12$1 = ["title"];
-const _hoisted_13$1 = { class: "pc-val" };
-const _hoisted_14$1 = { class: "pc-pct" };
+const _hoisted_8$1 = { class: "pc-svg-wrap" };
+const _hoisted_9$1 = ["viewBox"];
+const _hoisted_10$1 = ["d", "fill", "onMousemove"];
+const _hoisted_11$1 = ["x", "y"];
+const _hoisted_12$1 = { class: "pc-tip-name" };
+const _hoisted_13$1 = { class: "pc-tip-val" };
+const _hoisted_14$1 = { class: "pc-legend" };
+const _hoisted_15$1 = ["title"];
+const _hoisted_16$1 = { class: "pc-val" };
+const _hoisted_17$1 = { class: "pc-pct" };
 
-const {computed: computed$1} = await importShared('vue');
+const {computed: computed$1,ref: ref$1} = await importShared('vue');
 
 
 // 纯 SVG 饼图（不依赖第三方图表库）：
 // - items: [{label, value}]，内部按 value 从大到小排序
 // - 只展示 value>0 的站点；图例展示 色块 + 站点名 + 数值 + 占比
-const SIZE = 220;
-const R = 100;
+// - 鼠标悬停扇区显示 tooltip（站点名 + 数据量）
+const SIZE = 260;
+const R = 118;
 
 
 const _sfc_main$1 = {
@@ -426,7 +430,7 @@ function labelPos(s) {
 }
 // 扇区角度足够大才在扇区上标数值，避免小扇区文字重叠
 function showLabel(s) {
-  return s.a2 - s.a1 > 0.28
+  return s.a2 - s.a1 > 0.3
 }
 function pct(v) {
   return total.value ? (v / total.value) * 100 : 0
@@ -449,6 +453,32 @@ function fmtCompact(n) {
   return num + 'B'
 }
 
+// ---------- tooltip ----------
+const svgRef = ref$1(null);
+const hover = ref$1(null);
+function onMove(e, s, i) {
+  const el = svgRef.value;
+  if (!el) return
+  const rect = el.getBoundingClientRect();
+  let x = e.clientX - rect.left;
+  let y = e.clientY - rect.top;
+  const tipW = 160, tipH = 34;
+  if (x + tipW > rect.width - 4) x = x - tipW - 10;
+  else x += 12;
+  if (y + tipH > rect.height - 4) y = y - tipH - 8;
+  else y -= 8;
+  hover.value = {
+    label: s.label,
+    value: s.value,
+    color: PALETTE[i % PALETTE.length],
+    x: Math.max(4, Math.floor(x)),
+    y: Math.max(4, Math.floor(y)),
+  };
+}
+function onLeave() {
+  hover.value = null;
+}
+
 return (_ctx, _cache) => {
   return (_openBlock$1(), _createElementBlock$1("div", _hoisted_1$1, [
     _createElementVNode$1("div", _hoisted_2$1, [
@@ -463,32 +493,48 @@ return (_ctx, _cache) => {
     (sorted.value.length === 0)
       ? (_openBlock$1(), _createElementBlock$1("div", _hoisted_6$1, _toDisplayString$1(__props.loading ? '加载中...' : __props.emptyText), 1))
       : (_openBlock$1(), _createElementBlock$1("div", _hoisted_7$1, [
-          (_openBlock$1(), _createElementBlock$1("svg", {
-            viewBox: `0 0 ${SIZE} ${SIZE}`,
-            class: "pc-svg"
-          }, [
-            (_openBlock$1(true), _createElementBlock$1(_Fragment$1, null, _renderList$1(segments.value, (s, i) => {
-              return (_openBlock$1(), _createElementBlock$1("g", { key: i }, [
-                _createElementVNode$1("path", {
-                  d: slicePath(s),
-                  fill: PALETTE[i % PALETTE.length],
-                  stroke: "#fff",
-                  "stroke-width": "1.5"
-                }, null, 8, _hoisted_9$1),
-                (showLabel(s))
-                  ? (_openBlock$1(), _createElementBlock$1("text", {
-                      key: 0,
-                      x: labelPos(s).x,
-                      y: labelPos(s).y,
-                      class: "pc-slice-label",
-                      "text-anchor": "middle",
-                      "dominant-baseline": "middle"
-                    }, _toDisplayString$1(fmtCompact(s.value)), 9, _hoisted_10$1))
-                  : _createCommentVNode$1("", true)
-              ]))
-            }), 128))
-          ], 8, _hoisted_8$1)),
-          _createElementVNode$1("div", _hoisted_11$1, [
+          _createElementVNode$1("div", _hoisted_8$1, [
+            (_openBlock$1(), _createElementBlock$1("svg", {
+              ref_key: "svgRef",
+              ref: svgRef,
+              viewBox: `0 0 ${SIZE} ${SIZE}`,
+              class: "pc-svg",
+              onMouseleave: onLeave
+            }, [
+              (_openBlock$1(true), _createElementBlock$1(_Fragment$1, null, _renderList$1(segments.value, (s, i) => {
+                return (_openBlock$1(), _createElementBlock$1("g", { key: i }, [
+                  _createElementVNode$1("path", {
+                    d: slicePath(s),
+                    fill: PALETTE[i % PALETTE.length],
+                    stroke: "#fff",
+                    "stroke-width": "1.5",
+                    onMousemove: $event => (onMove($event, s, i))
+                  }, null, 40, _hoisted_10$1),
+                  (showLabel(s))
+                    ? (_openBlock$1(), _createElementBlock$1("text", {
+                        key: 0,
+                        x: labelPos(s).x,
+                        y: labelPos(s).y,
+                        class: "pc-slice-label",
+                        "text-anchor": "middle",
+                        "dominant-baseline": "middle"
+                      }, _toDisplayString$1(fmtCompact(s.value)), 9, _hoisted_11$1))
+                    : _createCommentVNode$1("", true)
+                ]))
+              }), 128))
+            ], 40, _hoisted_9$1)),
+            (hover.value)
+              ? (_openBlock$1(), _createElementBlock$1("div", {
+                  key: 0,
+                  class: "pc-tip",
+                  style: _normalizeStyle({ left: hover.value.x + 'px', top: hover.value.y + 'px', background: hover.value.color })
+                }, [
+                  _createElementVNode$1("span", _hoisted_12$1, _toDisplayString$1(hover.value.label), 1),
+                  _createElementVNode$1("span", _hoisted_13$1, _toDisplayString$1(fmtBytes(hover.value.value)), 1)
+                ], 4))
+              : _createCommentVNode$1("", true)
+          ]),
+          _createElementVNode$1("div", _hoisted_14$1, [
             (_openBlock$1(true), _createElementBlock$1(_Fragment$1, null, _renderList$1(sorted.value, (s, i) => {
               return (_openBlock$1(), _createElementBlock$1("div", {
                 key: i,
@@ -501,9 +547,9 @@ return (_ctx, _cache) => {
                 _createElementVNode$1("span", {
                   class: "pc-name",
                   title: s.label
-                }, _toDisplayString$1(s.label), 9, _hoisted_12$1),
-                _createElementVNode$1("span", _hoisted_13$1, _toDisplayString$1(fmtBytes(s.value)), 1),
-                _createElementVNode$1("span", _hoisted_14$1, _toDisplayString$1(pct(s.value).toFixed(1)) + "%", 1)
+                }, _toDisplayString$1(s.label), 9, _hoisted_15$1),
+                _createElementVNode$1("span", _hoisted_16$1, _toDisplayString$1(fmtBytes(s.value)), 1),
+                _createElementVNode$1("span", _hoisted_17$1, _toDisplayString$1(pct(s.value).toFixed(1)) + "%", 1)
               ]))
             }), 128))
           ])
@@ -513,7 +559,7 @@ return (_ctx, _cache) => {
 }
 
 };
-const PieChart = /*#__PURE__*/_export_sfc(_sfc_main$1, [['__scopeId',"data-v-410787de"]]);
+const PieChart = /*#__PURE__*/_export_sfc(_sfc_main$1, [['__scopeId',"data-v-fc2ae6d4"]]);
 
 const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment} = await importShared('vue');
 
@@ -539,22 +585,23 @@ const _hoisted_12 = {
   key: 0,
   class: "text-medium-emphasis"
 };
-const _hoisted_13 = ["x2"];
-const _hoisted_14 = ["y1", "x2", "y2"];
-const _hoisted_15 = {
+const _hoisted_13 = ["width"];
+const _hoisted_14 = ["x2"];
+const _hoisted_15 = ["y1", "x2", "y2"];
+const _hoisted_16 = {
   x: 4,
   y: 16,
   class: "dt-axis"
 };
-const _hoisted_16 = ["y"];
-const _hoisted_17 = ["points"];
+const _hoisted_17 = ["y"];
 const _hoisted_18 = ["points"];
-const _hoisted_19 = ["x", "y"];
-const _hoisted_20 = { style: {"color":"#4caf50"} };
-const _hoisted_21 = { style: {"color":"#2196f3"} };
+const _hoisted_19 = ["points"];
+const _hoisted_20 = ["x", "y"];
+const _hoisted_21 = { style: {"color":"#4caf50"} };
+const _hoisted_22 = { style: {"color":"#2196f3"} };
 
-const {ref,computed,onMounted,watch,nextTick} = await importShared('vue');
-const lineW = 640, lineH = 220, linePadL = 48, linePadB = 28;
+const {ref,computed,onMounted,onUnmounted,watch,nextTick} = await importShared('vue');
+const lineH = 220, linePadL = 48, linePadB = 28;
 
 const _sfc_main = {
   __name: 'Page',
@@ -579,7 +626,6 @@ const props = __props;
 const emit = __emit;
 const period = ref('month');
 const value = ref('');
-const downloader = ref('');
 const loading = ref(false);
 const error = ref('');
 const records = ref([]);
@@ -655,7 +701,6 @@ async function load() {
   if (!value.value) value.value = defaultValue();
   try {
     const q = new URLSearchParams({ period: period.value, value: value.value });
-    if (downloader.value) q.set('downloader', downloader.value);
     const [r1, r2] = await Promise.all([
       props.api.get(`${base.value}/records?${q.toString()}`),
       props.api.get(`${base.value}/trend?${q.toString()}`),
@@ -678,6 +723,10 @@ onMounted(() => {
   load();
   loadMonthPie();
   loadDayPie();
+  observeTrendWidth();
+});
+onUnmounted(() => {
+  if (trendRO) trendRO.disconnect();
 });
 watch(period, () => {
   value.value = defaultValue();
@@ -735,7 +784,18 @@ async function loadDayPie() {
   }
 }
 
-// ---------- 折线图（原逻辑未动）----------
+// ---------- 折线图（自适应容器宽度，避免只占左半屏）----------
+const trendW = ref(640);
+const trendWrap = ref(null);
+let trendRO = null;
+function observeTrendWidth() {
+  if (!trendWrap.value || typeof ResizeObserver === 'undefined') return
+  trendRO = new ResizeObserver((entries) => {
+    const w = entries[0]?.contentRect?.width;
+    if (w > 0) trendW.value = Math.max(320, Math.floor(w));
+  });
+  trendRO.observe(trendWrap.value);
+}
 const maxTrendBytes = computed(() => {
   let m = 0;
   for (const p of trend.value) m = Math.max(m, Number(p.uploaded || 0), Number(p.downloaded || 0));
@@ -744,7 +804,7 @@ const maxTrendBytes = computed(() => {
 function linePoints(field) {
   const n = trend.value.length;
   if (n === 0) return ''
-  const plotW = lineW - linePadL - 10;
+  const plotW = trendW.value - linePadL - 10;
   const plotH = lineH - linePadB - 10;
   return trend.value
     .map((p, i) => {
@@ -756,7 +816,7 @@ function linePoints(field) {
 const lineXLabels = computed(() => {
   const n = trend.value.length;
   if (n === 0) return []
-  const plotW = lineW - linePadL - 10;
+  const plotW = trendW.value - linePadL - 10;
   const step = Math.max(1, Math.ceil(n / 8));
   const out = [];
   for (let i = 0; i < n; i += step) {
@@ -769,7 +829,6 @@ const lineXLabels = computed(() => {
 return (_ctx, _cache) => {
   const _component_VSpacer = _resolveComponent("VSpacer");
   const _component_VSelect = _resolveComponent("VSelect");
-  const _component_VTextField = _resolveComponent("VTextField");
   const _component_VBtn = _resolveComponent("VBtn");
   const _component_VToolbar = _resolveComponent("VToolbar");
   const _component_VDivider = _resolveComponent("VDivider");
@@ -783,7 +842,7 @@ return (_ctx, _cache) => {
       color: "transparent"
     }, {
       default: _withCtx(() => [
-        _cache[8] || (_cache[8] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计", -1)),
+        _cache[7] || (_cache[7] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计", -1)),
         _createVNode(_component_VSpacer),
         _createVNode(_component_VSelect, {
           modelValue: period.value,
@@ -806,16 +865,6 @@ return (_ctx, _cache) => {
             onClose: load
           }, null, 8, ["modelValue", "mode"])
         ]),
-        _createVNode(_component_VTextField, {
-          modelValue: downloader.value,
-          "onUpdate:modelValue": _cache[2] || (_cache[2] = $event => ((downloader).value = $event)),
-          placeholder: "下载器(可选)",
-          density: "compact",
-          "hide-details": "",
-          style: {"max-width":"150px"},
-          variant: "outlined",
-          class: "ms-2"
-        }, null, 8, ["modelValue"]),
         _createVNode(_component_VBtn, {
           icon: "mdi-refresh",
           variant: "text",
@@ -831,7 +880,7 @@ return (_ctx, _cache) => {
           class: "ms-2",
           onClick: doCollect
         }, {
-          default: _withCtx(() => [...(_cache[6] || (_cache[6] = [
+          default: _withCtx(() => [...(_cache[5] || (_cache[5] = [
             _createTextVNode("立即采集", -1)
           ]))]),
           _: 1
@@ -844,7 +893,7 @@ return (_ctx, _cache) => {
           class: "ms-2",
           onClick: doReset
         }, {
-          default: _withCtx(() => [...(_cache[7] || (_cache[7] = [
+          default: _withCtx(() => [...(_cache[6] || (_cache[6] = [
             _createTextVNode("解除限速", -1)
           ]))]),
           _: 1
@@ -852,7 +901,7 @@ return (_ctx, _cache) => {
         _createVNode(_component_VBtn, {
           icon: "mdi-close",
           variant: "text",
-          onClick: _cache[3] || (_cache[3] = $event => (emit('close')))
+          onClick: _cache[2] || (_cache[2] = $event => (emit('close')))
         })
       ]),
       _: 1
@@ -882,7 +931,7 @@ return (_ctx, _cache) => {
         class: "dt-card"
       }, {
         default: _withCtx(() => [
-          _cache[9] || (_cache[9] = _createElementVNode("div", { class: "text-caption" }, "上传流量", -1)),
+          _cache[8] || (_cache[8] = _createElementVNode("div", { class: "text-caption" }, "上传流量", -1)),
           _createElementVNode("div", _hoisted_6, _toDisplayString(fmtBytes(totalUp.value)), 1)
         ]),
         _: 1
@@ -893,7 +942,7 @@ return (_ctx, _cache) => {
         class: "dt-card"
       }, {
         default: _withCtx(() => [
-          _cache[10] || (_cache[10] = _createElementVNode("div", { class: "text-caption" }, "下载流量", -1)),
+          _cache[9] || (_cache[9] = _createElementVNode("div", { class: "text-caption" }, "下载流量", -1)),
           _createElementVNode("div", _hoisted_7, _toDisplayString(fmtBytes(totalDown.value)), 1)
         ]),
         _: 1
@@ -903,7 +952,7 @@ return (_ctx, _cache) => {
         class: "dt-card"
       }, {
         default: _withCtx(() => [
-          _cache[11] || (_cache[11] = _createElementVNode("div", { class: "text-caption" }, "分享率", -1)),
+          _cache[10] || (_cache[10] = _createElementVNode("div", { class: "text-caption" }, "分享率", -1)),
           _createElementVNode("div", _hoisted_8, _toDisplayString(totalDown.value > 0 ? (totalUp.value / totalDown.value).toFixed(2) : '—'), 1)
         ]),
         _: 1
@@ -921,10 +970,10 @@ return (_ctx, _cache) => {
           }, {
             default: _withCtx(() => [
               _createElementVNode("div", _hoisted_10, [
-                _cache[12] || (_cache[12] = _createElementVNode("span", { class: "dt-pie-title" }, "本月上传", -1)),
+                _cache[11] || (_cache[11] = _createElementVNode("span", { class: "dt-pie-title" }, "本月上传", -1)),
                 _createVNode(CalendarPanel, {
                   modelValue: pieMonth.value,
-                  "onUpdate:modelValue": _cache[4] || (_cache[4] = $event => ((pieMonth).value = $event)),
+                  "onUpdate:modelValue": _cache[3] || (_cache[3] = $event => ((pieMonth).value = $event)),
                   mode: "month",
                   onClose: loadMonthPie
                 }, null, 8, ["modelValue"])
@@ -943,10 +992,10 @@ return (_ctx, _cache) => {
           }, {
             default: _withCtx(() => [
               _createElementVNode("div", _hoisted_11, [
-                _cache[13] || (_cache[13] = _createElementVNode("span", { class: "dt-pie-title" }, "今日上传", -1)),
+                _cache[12] || (_cache[12] = _createElementVNode("span", { class: "dt-pie-title" }, "今日上传", -1)),
                 _createVNode(CalendarPanel, {
                   modelValue: pieDay.value,
-                  "onUpdate:modelValue": _cache[5] || (_cache[5] = $event => ((pieDay).value = $event)),
+                  "onUpdate:modelValue": _cache[4] || (_cache[4] = $event => ((pieDay).value = $event)),
                   mode: "day",
                   onClose: loadDayPie
                 }, null, 8, ["modelValue"])
@@ -968,57 +1017,63 @@ return (_ctx, _cache) => {
       title: `时间趋势（${period.value === 'year' ? '逐月' : '逐日'}）`
     }, {
       text: _withCtx(() => [
-        (trend.value.length === 0)
-          ? (_openBlock(), _createElementBlock("div", _hoisted_12, "暂无数据"))
-          : (_openBlock(), _createElementBlock("svg", {
-              key: 1,
-              width: lineW,
-              height: lineH,
-              class: "dt-line"
-            }, [
-              _createElementVNode("line", {
-                x1: linePadL,
-                y1: 10,
-                x2: lineW - 10,
-                y2: 10,
-                stroke: "#eee"
-              }, null, 8, _hoisted_13),
-              _createElementVNode("line", {
-                x1: linePadL,
-                y1: lineH - linePadB,
-                x2: lineW - 10,
-                y2: lineH - linePadB,
-                stroke: "#ccc"
-              }, null, 8, _hoisted_14),
-              _createElementVNode("text", _hoisted_15, _toDisplayString(fmtBytes(maxTrendBytes.value)), 1),
-              _createElementVNode("text", {
-                x: 4,
-                y: lineH - linePadB,
-                class: "dt-axis"
-              }, "0", 8, _hoisted_16),
-              _createElementVNode("polyline", {
-                points: linePoints('uploaded'),
-                fill: "none",
-                stroke: "#4caf50",
-                "stroke-width": "2"
-              }, null, 8, _hoisted_17),
-              _createElementVNode("polyline", {
-                points: linePoints('downloaded'),
-                fill: "none",
-                stroke: "#2196f3",
-                "stroke-width": "2"
-              }, null, 8, _hoisted_18),
-              (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(lineXLabels.value, (t, i) => {
-                return (_openBlock(), _createElementBlock("text", {
-                  key: i,
-                  x: t.x,
-                  y: lineH - linePadB + 16,
-                  class: "dt-axis",
-                  "text-anchor": "middle"
-                }, _toDisplayString(t.label), 9, _hoisted_19))
-              }), 128))
-            ])),
-        _cache[14] || (_cache[14] = _createElementVNode("div", { class: "dt-legend" }, [
+        _createElementVNode("div", {
+          ref_key: "trendWrap",
+          ref: trendWrap,
+          class: "dt-line-wrap"
+        }, [
+          (trend.value.length === 0)
+            ? (_openBlock(), _createElementBlock("div", _hoisted_12, "暂无数据"))
+            : (_openBlock(), _createElementBlock("svg", {
+                key: 1,
+                width: trendW.value,
+                height: lineH,
+                class: "dt-line"
+              }, [
+                _createElementVNode("line", {
+                  x1: linePadL,
+                  y1: 10,
+                  x2: trendW.value - 10,
+                  y2: 10,
+                  stroke: "#eee"
+                }, null, 8, _hoisted_14),
+                _createElementVNode("line", {
+                  x1: linePadL,
+                  y1: lineH - linePadB,
+                  x2: trendW.value - 10,
+                  y2: lineH - linePadB,
+                  stroke: "#ccc"
+                }, null, 8, _hoisted_15),
+                _createElementVNode("text", _hoisted_16, _toDisplayString(fmtBytes(maxTrendBytes.value)), 1),
+                _createElementVNode("text", {
+                  x: 4,
+                  y: lineH - linePadB,
+                  class: "dt-axis"
+                }, "0", 8, _hoisted_17),
+                _createElementVNode("polyline", {
+                  points: linePoints('uploaded'),
+                  fill: "none",
+                  stroke: "#4caf50",
+                  "stroke-width": "2"
+                }, null, 8, _hoisted_18),
+                _createElementVNode("polyline", {
+                  points: linePoints('downloaded'),
+                  fill: "none",
+                  stroke: "#2196f3",
+                  "stroke-width": "2"
+                }, null, 8, _hoisted_19),
+                (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(lineXLabels.value, (t, i) => {
+                  return (_openBlock(), _createElementBlock("text", {
+                    key: i,
+                    x: t.x,
+                    y: lineH - linePadB + 16,
+                    class: "dt-axis",
+                    "text-anchor": "middle"
+                  }, _toDisplayString(t.label), 9, _hoisted_20))
+                }), 128))
+              ], 8, _hoisted_13))
+        ], 512),
+        _cache[13] || (_cache[13] = _createElementVNode("div", { class: "dt-legend" }, [
           _createElementVNode("span", {
             class: "dt-dot",
             style: {"background":"#4caf50"}
@@ -1051,10 +1106,10 @@ return (_ctx, _cache) => {
           ]
         }, {
           "item.uploaded": _withCtx(({ item }) => [
-            _createElementVNode("span", _hoisted_20, _toDisplayString(fmtBytes(item.uploaded)), 1)
+            _createElementVNode("span", _hoisted_21, _toDisplayString(fmtBytes(item.uploaded)), 1)
           ]),
           "item.downloaded": _withCtx(({ item }) => [
-            _createElementVNode("span", _hoisted_21, _toDisplayString(fmtBytes(item.downloaded)), 1)
+            _createElementVNode("span", _hoisted_22, _toDisplayString(fmtBytes(item.downloaded)), 1)
           ]),
           _: 1
         }, 8, ["items"])
@@ -1066,6 +1121,6 @@ return (_ctx, _cache) => {
 }
 
 };
-const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-d241d328"]]);
+const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-466a44cb"]]);
 
 export { Page as default };
