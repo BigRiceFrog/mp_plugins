@@ -223,6 +223,8 @@ class FileMonitorHandler(FileSystemEventHandler):
             # 而自动跳过，因此不会重复加入删除队列。
             if self.monitor_type == "hardlink":
                 self.sync.handle_directory_deleted(file_path)
+            elif self.monitor_type == "strm":
+                self.sync.handle_strm_directory_deleted(file_path)
             return
         if file_path.suffix in [".!qB", ".part", ".mp"]:
             return
@@ -304,7 +306,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
     # 插件图标
     plugin_icon = "Ombi_A.png"
     # 插件版本
-    plugin_version = "2.16.1"
+    plugin_version = "2.16.2"
     # 插件作者
     plugin_author = "DzAvril"
     # 作者主页
@@ -1507,6 +1509,166 @@ class RemoveLinkJellyfinFix(_PluginBase):
             logger.error(
                 f"处理目录删除事件失败：{dir_path} - {str(e)} - {traceback.format_exc()}"
             )
+
+    def handle_strm_directory_deleted(self, dir_path: Path):
+        """
+        处理 STRM 模式下的目录删除事件。
+
+        与硬链接模式同理：某些媒体服务器 / 文件系统删除整个目录时只产生
+        目录级 DELETE 事件，目录内每个 .strm 文件的 DELETE 事件可能不会被
+        监控器观察到。这里利用 file_state 中已记录的 strm 文件路径，把该
+        目录（含子目录）下原先监控的 strm 文件逐个按“文件删除”处理，
+        走 handle_strm_deleted() 删除对应网盘文件，并由其级联清理空目录
+        （例如整部剧只下了一季、删掉该季后父级“电视剧目录”若已为空会被一并删除）。
+        """
+        try:
+            dir_path = Path(dir_path)
+            dir_str = self._normalize_config_path(str(dir_path))
+
+            # 安全保护：监控根目录本身被删除通常意味着挂载点/存储异常，
+            # 不能把整个监控目录里的所有 strm 当成“用户删除”来清理。
+            monitor_roots = [
+                path.strip()
+                for path in self.monitor_dirs.split("\n")
+                if path.strip()
+            ]
+            for monitor_root in monitor_roots:
+                if dir_str == self._normalize_config_path(monitor_root):
+                    logger.warning(
+                        f"检测到监控根目录被删除，跳过 STRM 目录级清理：{dir_path}"
+                    )
+                    return
+
+            # 从状态表取出该目录（含子目录）下的 strm 文件路径。
+            # 不要依赖目录当前是否存在，因为此时目录通常已被一次性删除。
+            with state_lock:
+                deleted_strm_paths = [
+                    Path(path)
+                    for path, file_info in self.file_state.items()
+                    if path.lower().endswith(".strm")
+                    and self._is_same_or_child_path(Path(path), str(dir_path))
+                ]
+
+            if not deleted_strm_paths:
+                logger.debug(f"STRM 目录删除未找到待处理文件记录：{dir_path}")
+                return
+
+            logger.info(
+                f"STRM 目录删除检测到 {len(deleted_strm_paths)} 个监控文件，"
+                f"开始按文件删除处理：{dir_path}"
+            )
+
+            # 复用 handle_strm_deleted()，逐文件删除对应网盘文件并级联清理空目录。
+            # 若文件级 DELETE 事件随后到达，handle_strm_deleted() 会因网盘文件
+            # 已不存在而自动跳过，不会重复删除。
+            for strm_path in deleted_strm_paths:
+                self.handle_strm_deleted(strm_path)
+
+            # 兜底：整目录删除后稍候，待网盘后端（115/Alist）列表一致性稳定，
+            # 再从被删目录这一级自底向上清理空目录/仅刮削目录。逐文件级联清理
+            # 常因后端列表延迟而停在父目录（例如先走到父目录时子目录还没删完、
+            # 又因含子目录被判定为“非空”而中断），这里多轮重试确保“变空的父目录
+            # 被真正删除”；若父目录仍有其它真实内容（如其它季）则停止，绝不越界删除。
+            if deleted_strm_paths:
+                sample = deleted_strm_paths[0]
+                st, sp = self._get_storage_path_from_strm(sample)
+                if st and sp:
+                    time.sleep(1.5)
+                    cloud_dir = str(Path(sp).parent)
+                    self._cleanup_empty_dirs_upward(st, cloud_dir)
+
+        except Exception as e:
+            logger.error(
+                f"处理 STRM 目录删除事件失败：{dir_path} - {str(e)} - {traceback.format_exc()}"
+            )
+
+    def _cleanup_empty_dirs_upward(self, storage_type: str, start_dir: str):
+        """
+        从 start_dir 这一级开始，自底向上清理网盘空目录 / 仅含刮削文件的目录。
+
+        用于“整目录删除”事件后的兜底清理：逐 strm 删除各自网盘文件后，级联清理
+        容易因网盘后端（115/Alist）列表一致性延迟而停在父目录。这里在稍作等待后
+        做多轮自底向上清理，确保“被删目录及其父目录在变空后被真正删除”；同时只要
+        某级目录仍含真实文件或子目录（例如其它季），就停止向上、绝不越界删除。
+        """
+        current = start_dir.rstrip("/\\")
+        if not current or current in ("/", "\\"):
+            return
+
+        for _ in range(3):
+            changed = False
+            cur = current
+            while cur and cur not in ("/", "\\"):
+                cur_item = self._get_storage_dir_item(storage_type, cur)
+                if not cur_item:
+                    # 该目录已不存在，继续向上检查父目录
+                    parent = str(Path(cur).parent)
+                    if parent == cur or parent in ("/", "\\"):
+                        break
+                    cur = parent
+                    continue
+
+                files = self._storagechain.list_files(cur_item, recursion=False)
+                if not files:
+                    # 目录已空，删除并向上
+                    if self._delete_storage_empty_dir(storage_type, cur_item):
+                        logger.info(f"删除网盘空目录: [{storage_type}] {cur}")
+                        changed = True
+                    parent = str(Path(cur).parent)
+                    if parent == cur or parent in ("/", "\\"):
+                        break
+                    cur = parent
+                    continue
+
+                # 目录非空：判断是否为仅含刮削文件的目录（无子目录、无真实文件）
+                only_scrap = True
+                for fi in files:
+                    if fi.type == "dir":
+                        only_scrap = False
+                        break
+                    if fi.type == "file" and not self._is_scrap_file(Path(fi.name)):
+                        only_scrap = False
+                        break
+
+                if only_scrap:
+                    # 删除全部刮削文件，再确认目录是否变空
+                    for fi in files:
+                        if fi.type == "file":
+                            try:
+                                self._storagechain.delete_file(fi)
+                            except Exception as ex:
+                                logger.debug(
+                                    f"删除网盘刮削文件失败: [{storage_type}] {fi.path} - {ex}"
+                                )
+                    files2 = self._storagechain.list_files(cur_item, recursion=False)
+                    if not files2:
+                        if self._delete_storage_empty_dir(storage_type, cur_item):
+                            logger.info(
+                                f"删除网盘空目录(清刮削后): [{storage_type}] {cur}"
+                            )
+                            changed = True
+                        parent = str(Path(cur).parent)
+                        if parent == cur or parent in ("/", "\\"):
+                            break
+                        cur = parent
+                        continue
+                    else:
+                        # 仍含真实内容，停止向上
+                        break
+                else:
+                    # 含真实文件或子目录，停止向上清理（保留父目录）
+                    break
+
+            if not changed:
+                # 本轮无变化，可能是后端列表延迟，稍候重试
+                time.sleep(1.0)
+            else:
+                # 有删除，立即再走一轮确保彻底
+                time.sleep(0.3)
+
+        logger.debug(
+            f"STRM 目录删除兜底清理完成: [{storage_type}] {start_dir}"
+        )
 
     def handle_deleted(self, file_path: Path):
         """
