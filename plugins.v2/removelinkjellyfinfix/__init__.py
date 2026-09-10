@@ -81,6 +81,7 @@ except ImportError:
 
 state_lock = threading.Lock()
 deletion_queue_lock = threading.Lock()
+strm_pending_lock = threading.Lock()
 
 
 class FileInfo(NamedTuple):
@@ -224,7 +225,8 @@ class FileMonitorHandler(FileSystemEventHandler):
             if self.monitor_type == "hardlink":
                 self.sync.handle_directory_deleted(file_path)
             elif self.monitor_type == "strm":
-                self.sync.handle_strm_directory_deleted(file_path)
+                # 缓冲目录删除事件，延迟聚合后判断整目录/部分删除，避免逐文件狂打网盘 API
+                self.sync._buffer_strm_dir_deleted(file_path)
             return
         if file_path.suffix in [".!qB", ".part", ".mp"]:
             return
@@ -238,9 +240,10 @@ class FileMonitorHandler(FileSystemEventHandler):
 
         # 根据监控类型处理删除事件
         if self.monitor_type == "strm":
-            # STRM 监控目录：只处理 strm 文件删除，其他文件忽略
+            # STRM 监控目录：只处理 strm 文件删除，其他文件忽略。
+            # 先缓冲，延迟聚合后再决定整目录一次性删除还是逐文件删除。
             if file_path.suffix.lower() == ".strm":
-                self.sync.handle_strm_deleted(file_path)
+                self.sync._buffer_strm_file_deleted(file_path)
             # 其他文件（如刮削文件）在 STRM 监控目录中被忽略，避免触发硬链接清理
         else:
             # 硬链接监控目录：处理硬链接文件删除
@@ -306,7 +309,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
     # 插件图标
     plugin_icon = "Ombi_A.png"
     # 插件版本
-    plugin_version = "2.16.2"
+    plugin_version = "2.16.3"
     # 插件作者
     plugin_author = "DzAvril"
     # 作者主页
@@ -435,6 +438,11 @@ class RemoveLinkJellyfinFix(_PluginBase):
 
         # 初始化延迟删除队列
         self.deletion_queue = []
+
+        # STRM 删除防抖缓冲（整目录合并删除，避免逐个文件狂打网盘 API）
+        self._strm_pending_files = set()
+        self._strm_pending_dirs = set()
+        self._strm_timer = None
 
         if self._enabled:
             # 记录延迟删除配置状态
@@ -1061,6 +1069,19 @@ class RemoveLinkJellyfinFix(_PluginBase):
         for task in tasks_to_process:
             self._execute_delayed_deletion(task)
 
+        # 停止 STRM 删除聚合定时器并处理剩余缓冲，避免重启丢删
+        if self._strm_timer:
+            try:
+                self._strm_timer.cancel()
+            except Exception:
+                pass
+            self._strm_timer = None
+        with strm_pending_lock:
+            strm_pending = bool(self._strm_pending_files or self._strm_pending_dirs)
+        if strm_pending:
+            logger.info("处理剩余的 STRM 删除缓冲")
+            self._process_strm_pending()
+
         logger.debug("服务停止完成")
 
     @staticmethod
@@ -1510,23 +1531,22 @@ class RemoveLinkJellyfinFix(_PluginBase):
                 f"处理目录删除事件失败：{dir_path} - {str(e)} - {traceback.format_exc()}"
             )
 
-    def handle_strm_directory_deleted(self, dir_path: Path):
+    def handle_strm_directory_deleted(self, dir_path: Path) -> bool:
         """
-        处理 STRM 模式下的目录删除事件。
+        整目录删除（调用前已确认本地目录不存在）：一次性删除对应网盘目录。
 
-        与硬链接模式同理：某些媒体服务器 / 文件系统删除整个目录时只产生
-        目录级 DELETE 事件，目录内每个 .strm 文件的 DELETE 事件可能不会被
-        监控器观察到。这里利用 file_state 中已记录的 strm 文件路径，把该
-        目录（含子目录）下原先监控的 strm 文件逐个按“文件删除”处理，
-        走 handle_strm_deleted() 删除对应网盘文件，并由其级联清理空目录
-        （例如整部剧只下了一季、删掉该季后父级“电视剧目录”若已为空会被一并删除）。
+        与逐文件删除相比，整目录一次性 delete_file 只产生 1~2 次网盘 API 调用，
+        避免批量删剧时逐个文件打 115/CloudDrive2 导致限流。
+
+        返回是否成功删除；失败时由 _process_strm_pending() 回退为逐文件删除，
+        保证不丢数据。
         """
         try:
             dir_path = Path(dir_path)
             dir_str = self._normalize_config_path(str(dir_path))
 
             # 安全保护：监控根目录本身被删除通常意味着挂载点/存储异常，
-            # 不能把整个监控目录里的所有 strm 当成“用户删除”来清理。
+            # 不能把整个监控目录当成“用户删除”来清理。
             monitor_roots = [
                 path.strip()
                 for path in self.monitor_dirs.split("\n")
@@ -1537,50 +1557,172 @@ class RemoveLinkJellyfinFix(_PluginBase):
                     logger.warning(
                         f"检测到监控根目录被删除，跳过 STRM 目录级清理：{dir_path}"
                     )
-                    return
+                    return False
 
-            # 从状态表取出该目录（含子目录）下的 strm 文件路径。
-            # 不要依赖目录当前是否存在，因为此时目录通常已被一次性删除。
-            with state_lock:
-                deleted_strm_paths = [
-                    Path(path)
-                    for path, file_info in self.file_state.items()
-                    if path.lower().endswith(".strm")
-                    and self._is_same_or_child_path(Path(path), str(dir_path))
-                ]
+            # 本地目录 → 网盘目录路径
+            storage_type, storage_dir = self._get_storage_path_from_strm_path(dir_path)
+            if not storage_type or not storage_dir:
+                logger.warning(
+                    f"无法映射本地目录到网盘路径，跳过整目录删除：{dir_path}"
+                )
+                return False
 
-            if not deleted_strm_paths:
-                logger.debug(f"STRM 目录删除未找到待处理文件记录：{dir_path}")
-                return
-
-            logger.info(
-                f"STRM 目录删除检测到 {len(deleted_strm_paths)} 个监控文件，"
-                f"开始按文件删除处理：{dir_path}"
+            dir_item = schemas.FileItem(
+                storage=storage_type,
+                path=storage_dir if storage_dir.endswith("/") else storage_dir + "/",
+                type="dir",
             )
+            if not self._storagechain.exists(dir_item):
+                logger.info(f"网盘目录不存在，无需删除：[{storage_type}] {storage_dir}")
+                return True
 
-            # 复用 handle_strm_deleted()，逐文件删除对应网盘文件并级联清理空目录。
-            # 若文件级 DELETE 事件随后到达，handle_strm_deleted() 会因网盘文件
-            # 已不存在而自动跳过，不会重复删除。
-            for strm_path in deleted_strm_paths:
-                self.handle_strm_deleted(strm_path)
-
-            # 兜底：整目录删除后稍候，待网盘后端（115/Alist）列表一致性稳定，
-            # 再从被删目录这一级自底向上清理空目录/仅刮削目录。逐文件级联清理
-            # 常因后端列表延迟而停在父目录（例如先走到父目录时子目录还没删完、
-            # 又因含子目录被判定为“非空”而中断），这里多轮重试确保“变空的父目录
-            # 被真正删除”；若父目录仍有其它真实内容（如其它季）则停止，绝不越界删除。
-            if deleted_strm_paths:
-                sample = deleted_strm_paths[0]
-                st, sp = self._get_storage_path_from_strm(sample)
-                if st and sp:
-                    time.sleep(1.5)
-                    cloud_dir = str(Path(sp).parent)
-                    self._cleanup_empty_dirs_upward(st, cloud_dir)
+            # 一次性删除整个网盘目录（递归清掉子目录、视频、刮削图）
+            if self._storagechain.delete_file(dir_item):
+                logger.info(
+                    f"整目录一次性删除网盘目录成功：[{storage_type}] {storage_dir}"
+                )
+                if self._delete_history:
+                    self.delete_history_by_dest(storage_dir)
+                if self._notify:
+                    self.post_message(
+                        mtype=NotificationType.SiteMessage,
+                        title="🧹 媒体文件清理",
+                        text=(
+                            f"✅ 整目录删除\n\n"
+                            f"🗂️ 本地目录：{dir_path}\n"
+                            f"🗑️ 已删除网盘目录：[{storage_type}] {storage_dir}"
+                        ),
+                    )
+                return True
+            else:
+                logger.error(
+                    f"整目录一次性删除网盘目录失败（将回退逐文件删除）："
+                    f"[{storage_type}] {storage_dir}"
+                )
+                return False
 
         except Exception as e:
             logger.error(
-                f"处理 STRM 目录删除事件失败：{dir_path} - {str(e)} - {traceback.format_exc()}"
+                f"处理 STRM 整目录删除失败：{dir_path} - {str(e)} - {traceback.format_exc()}"
             )
+            return False
+
+    def _get_storage_path_from_strm_path(self, local_path: Path) -> Tuple[str, str]:
+        """
+        将本地 strm 路径（文件或目录）映射到网盘路径，通用去 .strm 后缀。
+        """
+        mappings = self._parse_strm_path_mappings()
+        local_str = str(local_path)
+        for strm_prefix, (storage_type, storage_prefix) in mappings.items():
+            if local_str.startswith(strm_prefix):
+                relative = local_str[len(strm_prefix):].lstrip("/")
+                storage_path = storage_prefix.rstrip("/") + "/" + relative
+                if storage_path.endswith(".strm"):
+                    storage_path = storage_path[:-5]
+                return storage_type, storage_path
+        return None, None
+
+    def _buffer_strm_file_deleted(self, file_path: Path):
+        """STRM 文件删除：仅缓冲，延迟聚合后再决定整目录/部分删除。"""
+        with strm_pending_lock:
+            self._strm_pending_files.add(str(file_path))
+            self._restart_strm_timer()
+        logger.debug(
+            f"缓冲 STRM 文件删除事件（待 {self._delay_seconds}s 聚合）：{file_path}"
+        )
+
+    def _buffer_strm_dir_deleted(self, dir_path: Path):
+        """STRM 目录删除：仅缓冲，延迟聚合后整目录一次性处理。"""
+        with strm_pending_lock:
+            self._strm_pending_dirs.add(str(dir_path))
+            self._restart_strm_timer()
+        logger.debug(
+            f"缓冲 STRM 目录删除事件（待 {self._delay_seconds}s 聚合）：{dir_path}"
+        )
+
+    def _restart_strm_timer(self):
+        """（重新）启动 STRM 删除聚合定时器。调用前须持有 strm_pending_lock。"""
+        if self._strm_timer:
+            try:
+                self._strm_timer.cancel()
+            except Exception:
+                pass
+        self._strm_timer = threading.Timer(
+            self._delay_seconds, self._process_strm_pending
+        )
+        self._strm_timer.daemon = True
+        self._strm_timer.start()
+
+    def _process_strm_pending(self):
+        """
+        STRM 删除聚合处理（延迟 delay_seconds 后由定时器触发）：
+
+        1. 收集缓冲期内所有被删除的文件/目录。
+        2. 判断哪些目录“已被整目录删除”（本地目录已不存在，无论是否有目录
+           级事件还是仅文件级事件）——电影删整电影目录；剧集若删后无其它季
+           则删整剧目录，仅删一季且还有其它季则只删对应季。
+        3. 整目录删除 → 一次性 delete_file 删除对应网盘目录（约 1~2 次 API）。
+        4. 其余文件（部分删除、或整目录删除失败回退） → 逐文件 handle_strm_deleted。
+        """
+        try:
+            with strm_pending_lock:
+                files = set(self._strm_pending_files)
+                dirs = set(self._strm_pending_dirs)
+                self._strm_pending_files.clear()
+                self._strm_pending_dirs.clear()
+                self._strm_timer = None
+        except Exception:
+            return
+
+        if not files and not dirs:
+            return
+
+        logger.info(
+            f"STRM 删除聚合处理：{len(dirs)} 个目录事件, {len(files)} 个文件事件"
+        )
+
+        # 候选目录 = 显式目录事件 + 各文件的直接父目录。
+        # 只要本地目录已不存在，即视为“整目录删除”（兼容只发文件事件的情况）。
+        candidate_dirs = set(dirs)
+        for f in files:
+            candidate_dirs.add(str(Path(f).parent))
+
+        fully_deleted = [d for d in candidate_dirs if not Path(d).exists()]
+        for d in fully_deleted:
+            logger.info(f"判定为整目录删除（本地已不存在）：{d}")
+
+        # 取“最顶层”的整目录删除（不被其它整目录删除包含），一次性删网盘目录即可，
+        # 其子目录由网盘递归删除覆盖，无需重复处理。
+        topmost = [
+            d
+            for d in fully_deleted
+            if not any(
+                self._is_same_or_child_path(Path(d), od) and od != d
+                for od in fully_deleted
+            )
+        ]
+
+        deleted_top_dirs = []
+        for d in topmost:
+            if self.handle_strm_directory_deleted(Path(d)):
+                deleted_top_dirs.append(str(Path(d)))
+            else:
+                logger.warning(f"整目录删除失败，将回退逐文件处理：{d}")
+
+        # 文件事件：父目录已被整目录成功删除 → 跳过；其余（部分删除 / 回退）逐文件处理。
+        for f in files:
+            fstr = str(f)
+            if any(
+                self._is_same_or_child_path(Path(d), fstr) for d in deleted_top_dirs
+            ):
+                logger.debug(f"文件 {f} 所在目录已被整目录删除，跳过单独处理")
+                continue
+            self.handle_strm_deleted(f)
+
+        logger.info(
+            f"STRM 删除聚合完成：整目录删除 {len(deleted_top_dirs)} 个，"
+            f"逐文件删除 {sum(1 for f in files if not any(self._is_same_or_child_path(Path(d), str(f)) for d in deleted_top_dirs))} 个"
+        )
 
     def _cleanup_empty_dirs_upward(self, storage_type: str, start_dir: str):
         """
