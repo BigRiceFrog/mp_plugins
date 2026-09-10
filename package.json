@@ -3,11 +3,12 @@
     "name": "清理媒体文件（Jellyfin修复版）",
     "description": "基于清理媒体文件 v2.16，修复 Jellyfin 删除整个媒体目录时仅产生目录删除事件导致硬链接未同步清理的问题。",
     "labels": "文件整理,媒体库,Jellyfin,硬链接",
-    "version": "2.16.3",
+    "version": "2.16.5",
     "author": "DzAvril / BigRiceFrog",
     "level": 1,
     "v2": true,
     "history": {
+      "v2.16.5": "修复整目录删除与回退逐文件删除的两个 bug：① 整目录删除时直接用 path 构造的 FileItem 缺少 fileid，导致 115 网盘 delete_file 抛 int(None) 异常；改为先通过 _get_storage_dir_item 获取带 fileid 的真实目录项再删除。② 回退逐文件删除时把字符串传入 handle_strm_deleted，进而在 delete_scrap_infos 中访问 .parent 触发 'str' object has no attribute 'parent'；统一转为 Path 传入，并在 delete_scrap_infos / handle_strm_deleted 入口做防御性 Path(path) 转换。",
       "v2.16.4": "修复 v2.16.3 初始化崩溃：STRM 防抖相关状态（_strm_pending_files/_strm_pending_dirs/_strm_timer）在 init_plugin 中先被 stop_service 访问后才赋值，导致首次加载 AttributeError、前端报'配置加载失败'。现补为类属性默认值，确保 stop_service 安全访问。同步将作者署名为 DzAvril / BigRiceFrog。",
       "v2.16.3": "STRM 删除防抖合并：文件/目录删除事件先缓冲 delay_seconds（复用现有延迟时间，默认30s），聚合后再判断整目录删除还是部分删除。整目录删除（本地目录已不存在）一次性 delete_file 删除对应网盘目录（约1~2次API，不再逐文件狂打115/CloudDrive2），失败则回退逐文件；部分删除仍走原逐文件逻辑。电影删整电影目录，剧集删后无其它季则删整剧目录、仅删一季且保留有其它季则只删对应季。",
       "v2.16.2": "STRM 模式新增目录删除事件处理：删除整个目录（如整季/整部剧）时枚举目录下所有 strm 并逐个删除对应网盘文件。并新增整目录删除后的兜底清理——等待网盘(115/Alist)列表一致性稳定后，自底向上多轮清理空目录/仅刮削目录：删掉唯一一季后父级电视剧目录一并删除；若父目录仍有其它真实内容（如其它季）则停止，绝不越界。修复批量删目录时父目录残留未删的问题。",

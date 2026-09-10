@@ -309,7 +309,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
     # 插件图标
     plugin_icon = "Ombi_A.png"
     # 插件版本
-    plugin_version = "2.16.4"
+    plugin_version = "2.16.5"
     # 插件作者
     plugin_author = "DzAvril / BigRiceFrog"
     # 作者主页
@@ -1169,6 +1169,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
         """
         清理path相关的刮削文件
         """
+        path = Path(path)
         if not self._delete_scrap_infos:
             return
         # 文件所在目录已被删除则退出
@@ -1572,11 +1573,16 @@ class RemoveLinkJellyfinFix(_PluginBase):
                 )
                 return False
 
-            dir_item = schemas.FileItem(
-                storage=storage_type,
-                path=storage_dir if storage_dir.endswith("/") else storage_dir + "/",
-                type="dir",
-            )
+            # 获取带 fileid 的真实目录项（115 等存储 delete_file 目录需要 fileid，
+            # 不能只用 path 构造；若获取失败则回退逐文件删除，保证安全）。
+            dir_item = self._get_storage_dir_item(storage_type, storage_dir)
+            if not dir_item:
+                logger.warning(
+                    f"无法获取网盘目录项（可能已不存在或缺少 fileid），"
+                    f"将回退逐文件删除：[{storage_type}] {storage_dir}"
+                )
+                return False
+
             if not self._storagechain.exists(dir_item):
                 logger.info(f"网盘目录不存在，无需删除：[{storage_type}] {storage_dir}")
                 return True
@@ -1598,6 +1604,8 @@ class RemoveLinkJellyfinFix(_PluginBase):
                             f"🗑️ 已删除网盘目录：[{storage_type}] {storage_dir}"
                         ),
                     )
+                # 兜底：整目录删除后，自底向上清理可能变空的父目录
+                self._cleanup_empty_dirs_upward(storage_type, storage_dir)
                 return True
             else:
                 logger.error(
@@ -1716,13 +1724,13 @@ class RemoveLinkJellyfinFix(_PluginBase):
 
         # 文件事件：父目录已被整目录成功删除 → 跳过；其余（部分删除 / 回退）逐文件处理。
         for f in files:
-            fstr = str(f)
+            fpath = Path(f)
             if any(
-                self._is_same_or_child_path(Path(d), fstr) for d in deleted_top_dirs
+                self._is_same_or_child_path(Path(d), str(fpath)) for d in deleted_top_dirs
             ):
                 logger.debug(f"文件 {f} 所在目录已被整目录删除，跳过单独处理")
                 continue
-            self.handle_strm_deleted(f)
+            self.handle_strm_deleted(fpath)
 
         logger.info(
             f"STRM 删除聚合完成：整目录删除 {len(deleted_top_dirs)} 个，"
@@ -2311,6 +2319,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
         """
         处理 strm 文件删除事件
         """
+        strm_file_path = Path(strm_file_path)
         logger.info(f"处理 strm 文件删除: {strm_file_path}")
 
         try:
