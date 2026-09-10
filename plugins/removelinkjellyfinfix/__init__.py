@@ -309,11 +309,11 @@ class RemoveLinkJellyfinFix(_PluginBase):
     # 插件图标
     plugin_icon = "Ombi_A.png"
     # 插件版本
-    plugin_version = "2.16.3"
+    plugin_version = "2.16.4"
     # 插件作者
-    plugin_author = "DzAvril"
+    plugin_author = "DzAvril / BigRiceFrog"
     # 作者主页
-    author_url = "https://github.com/DzAvril"
+    author_url = "https://github.com/BigRiceFrog"
     # 插件配置项ID前缀
     plugin_config_prefix = "linkdeleted_"
     # 加载顺序
@@ -380,6 +380,11 @@ class RemoveLinkJellyfinFix(_PluginBase):
     deletion_queue: List[DeletionTask] = []
     # 延迟删除定时器
     _deletion_timer = None
+
+    # STRM 删除防抖缓冲（类属性默认值，防止 stop_service 在 init_plugin 之前访问时报错）
+    _strm_pending_files = set()
+    _strm_pending_dirs = set()
+    _strm_timer = None
 
     @staticmethod
     def __choose_observer():
