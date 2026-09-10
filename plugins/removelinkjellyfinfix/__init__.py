@@ -6,7 +6,7 @@ import threading
 import time
 import traceback
 from pathlib import Path
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import NamedTuple
@@ -309,7 +309,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
     # 插件图标
     plugin_icon = "Ombi_A.png"
     # 插件版本
-    plugin_version = "2.16.6"
+    plugin_version = "2.16.7"
     # 插件作者
     plugin_author = "DzAvril / BigRiceFrog"
     # 作者主页
@@ -1563,15 +1563,21 @@ class RemoveLinkJellyfinFix(_PluginBase):
                 f"处理目录删除事件失败：{dir_path} - {str(e)} - {traceback.format_exc()}"
             )
 
-    def handle_strm_directory_deleted(self, dir_path: Path) -> bool:
+    def handle_strm_directory_deleted(
+        self, dir_path: Path
+    ) -> Tuple[bool, Optional[str], Optional[str]]:
         """
         整目录删除（调用前已确认本地目录不存在）：一次性删除对应网盘目录。
 
         与逐文件删除相比，整目录一次性 delete_file 只产生 1~2 次网盘 API 调用，
         避免批量删剧时逐个文件打 115/CloudDrive2 导致限流。
 
-        返回是否成功删除；失败时由 _process_strm_pending() 回退为逐文件删除，
-        保证不丢数据。
+        返回 (是否删除成功, 存储类型, 已删除的网盘目录)；失败时由
+        _process_strm_pending() 回退为逐文件删除，保证不丢数据。
+
+        注意：这里**不**立即清理父目录，父目录是否变空由调用方在本批所有
+        整目录删除完成后统一检查（同一父目录只查一次），避免批量删除时
+        每个目录都重复查询同一个父目录。
         """
         try:
             dir_path = Path(dir_path)
@@ -1589,7 +1595,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
                     logger.warning(
                         f"检测到监控根目录被删除，跳过 STRM 目录级清理：{dir_path}"
                     )
-                    return False
+                    return False, None, None
 
             # 本地目录 → 网盘目录路径
             storage_type, storage_dir = self._get_storage_path_from_strm_path(dir_path)
@@ -1597,7 +1603,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
                 logger.warning(
                     f"无法映射本地目录到网盘路径，跳过整目录删除：{dir_path}"
                 )
-                return False
+                return False, None, None
 
             # 获取带 fileid 的真实目录项（115 等存储 delete_file 目录需要 fileid，
             # 不能只用 path 构造；若获取失败则回退逐文件删除，保证安全）。
@@ -1607,7 +1613,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
                     f"无法获取网盘目录项（可能已不存在或缺少 fileid），"
                     f"将回退逐文件删除：[{storage_type}] {storage_dir}"
                 )
-                return False
+                return False, None, None
 
             # 目录项刚从父目录 listing 中取得，说明目录确实存在，
             # 无需再额外 exists 校验（省一次网盘 API；若实际已不存在，
@@ -1630,21 +1636,20 @@ class RemoveLinkJellyfinFix(_PluginBase):
                             f"🗑️ 已删除网盘目录：[{storage_type}] {storage_dir}"
                         ),
                     )
-                # 兜底：整目录删除后，自底向上清理可能变空的父目录
-                self._cleanup_empty_dirs_upward(storage_type, storage_dir)
-                return True
+                # 父目录清理交给调用方在本批结束后统一处理
+                return True, storage_type, storage_dir
             else:
                 logger.error(
                     f"整目录一次性删除网盘目录失败（将回退逐文件删除）："
                     f"[{storage_type}] {storage_dir}"
                 )
-                return False
+                return False, None, None
 
         except Exception as e:
             logger.error(
                 f"处理 STRM 整目录删除失败：{dir_path} - {str(e)} - {traceback.format_exc()}"
             )
-            return False
+            return False, None, None
 
     def _get_storage_path_from_strm_path(self, local_path: Path) -> Tuple[str, str]:
         """
@@ -1742,9 +1747,13 @@ class RemoveLinkJellyfinFix(_PluginBase):
         ]
 
         deleted_top_dirs = []
+        pending_parent_cleanups = []
         for d in topmost:
-            if self.handle_strm_directory_deleted(Path(d)):
+            ok, storage_type, storage_dir = self.handle_strm_directory_deleted(Path(d))
+            if ok:
                 deleted_top_dirs.append(str(Path(d)))
+                if storage_type and storage_dir:
+                    pending_parent_cleanups.append((storage_type, storage_dir))
             else:
                 logger.warning(f"整目录删除失败，将回退逐文件处理：{d}")
 
@@ -1758,9 +1767,25 @@ class RemoveLinkJellyfinFix(_PluginBase):
                 continue
             self.handle_strm_deleted(fpath)
 
+        # 本批所有整目录删除完成后，统一检查父目录是否变空。
+        # 同一个父目录只检查一次：批量删多部同分类剧集时，只有最后一部删完
+        # 父目录才可能为空，中间每次检查都注定返回“非空”，纯属浪费网盘 API。
+        checked_parents = set()
+        for storage_type, storage_dir in pending_parent_cleanups:
+            parent = str(Path(storage_dir.rstrip("/\\")).parent)
+            if not parent or parent in ("/", "\\"):
+                continue
+            key = (storage_type, parent)
+            if key in checked_parents:
+                logger.debug(f"父目录本批已检查过，跳过重复检查：[{storage_type}] {parent}")
+                continue
+            checked_parents.add(key)
+            self._cleanup_empty_dirs_upward(storage_type, storage_dir)
+
         logger.info(
             f"STRM 删除聚合完成：整目录删除 {len(deleted_top_dirs)} 个，"
-            f"逐文件删除 {len(files) - skipped} 个（跳过 {skipped} 个）"
+            f"逐文件删除 {len(files) - skipped} 个（跳过 {skipped} 个），"
+            f"父目录空检查 {len(checked_parents)} 次"
         )
 
     def _cleanup_empty_dirs_upward(self, storage_type: str, start_dir: str):
