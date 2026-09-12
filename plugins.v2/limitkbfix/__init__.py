@@ -12,9 +12,9 @@ from app.plugins import _PluginBase
 from app.schemas import ServiceInfo
 
 
-class Limit(_PluginBase):
+class LimitKbFix(_PluginBase):
     # 插件名称
-    plugin_name = "自动限速"
+    plugin_name = "自动限速（KB修复）"
     # 插件描述
     plugin_desc = "给qb、tr的下载任务限速"
     # 插件图标
@@ -26,13 +26,13 @@ class Limit(_PluginBase):
     # 作者主页
     author_url = "https://github.com/aClarkChen"
     # 插件配置项ID前缀
-    plugin_config_prefix = "Limit_"
+    plugin_config_prefix = "LimitKbFix_"
     # 加载顺序
     plugin_order = 22
     # 可使用的用户级别
     auth_level = 2
     # 日志前缀
-    LOG_TAG = "[Limit]"
+    LOG_TAG = "[LimitKbFix]"
 
     # 退出事件
     _event = threading.Event()
@@ -138,7 +138,7 @@ class Limit(_PluginBase):
                 if self._interval == "固定间隔":
                     if self._interval_unit == "小时":
                         return [{
-                            "id": "Limit",
+                            "id": "LimitKbFix",
                             "name": "自动限速",
                             "trigger": "interval",
                             "func": self._complete_limit,
@@ -151,7 +151,7 @@ class Limit(_PluginBase):
                             self._interval_time = 5
                             logger.info(f"{self.LOG_TAG}启动定时服务: 最小不少于5分钟, 防止执行间隔太短任务冲突")
                         return [{
-                            "id": "Limit",
+                            "id": "LimitKbFix",
                             "name": "自动限速",
                             "trigger": "interval",
                             "func": self._complete_limit,
@@ -161,7 +161,7 @@ class Limit(_PluginBase):
                         }]
                 else:
                     return [{
-                        "id": "Limit",
+                        "id": "LimitKbFix",
                         "name": "自动限速",
                         "trigger": CronTrigger.from_crontab(self._interval_cron),
                         "func": self._complete_limit,
