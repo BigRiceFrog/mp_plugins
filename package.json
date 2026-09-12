@@ -9,7 +9,7 @@
     "v2": true,
     "history": {
       "v2.16.7": "父目录空检查改为「延后 + 去重」：handle_strm_directory_deleted 删除成功后不再立即检查父目录，而是把已删除的网盘目录回传给 _process_strm_pending；待本批所有整目录删除与逐文件回退都处理完后，再统一检查父目录是否变空，且同一个父目录整批只检查一次。批量删除同一分类下多部剧时（同一个 30 秒防抖窗口内），父目录检查从每部剧各一次（N×3 次网盘请求，其中前 N-1 次注定返回'非空'）降为 1 次，中间那些无效查询全部省掉。聚合完成日志新增'父目录空检查 N 次'计数便于核对。",
-      "v2.16.6":"大幅减少整目录删除后的网盘 API 请求：① 修正 _process_strm_pending 中'文件是否位于已整目录删除的目录之下'的判断——原 _is_same_or_child_path 参数顺序写反导致恒为 False，整目录删除成功后子 strm 仍被逐文件处理（逐个 get_file_item/list_files 查找已删除的视频）；改用 _is_path_under_dirs（commonpath + 规范化前缀双重判断）后其下文件事件直接跳过。② 整目录删除后的父目录兜底清理由'3 轮自底向上全量扫描 + 轮间 sleep'改为从父目录开始的单轮轻量检查，遇到非空立即停止，一次整目录删除的额外网盘请求从十余次降到 1~2 次。③ 去掉整目录删除前冗余的 exists 校验（目录项刚从父目录 listing 取得，必然存在，失败会回退逐文件不会误删）。",
+      "v2.16.6": "大幅减少整目录删除后的网盘 API 请求：① 修正 _process_strm_pending 中'文件是否位于已整目录删除的目录之下'的判断——原 _is_same_or_child_path 参数顺序写反导致恒为 False，整目录删除成功后子 strm 仍被逐文件处理（逐个 get_file_item/list_files 查找已删除的视频）；改用 _is_path_under_dirs（commonpath + 规范化前缀双重判断）后其下文件事件直接跳过。② 整目录删除后的父目录兜底清理由'3 轮自底向上全量扫描 + 轮间 sleep'改为从父目录开始的单轮轻量检查，遇到非空立即停止，一次整目录删除的额外网盘请求从十余次降到 1~2 次。③ 去掉整目录删除前冗余的 exists 校验（目录项刚从父目录 listing 取得，必然存在，失败会回退逐文件不会误删）。",
       "v2.16.5": "修复整目录删除与回退逐文件删除的两个 bug：① 整目录删除时直接用 path 构造的 FileItem 缺少 fileid，导致 115 网盘 delete_file 抛 int(None) 异常；改为先通过 _get_storage_dir_item 获取带 fileid 的真实目录项再删除。② 回退逐文件删除时把字符串传入 handle_strm_deleted，进而在 delete_scrap_infos 中访问 .parent 触发 'str' object has no attribute 'parent'；统一转为 Path 传入，并在 delete_scrap_infos / handle_strm_deleted 入口做防御性 Path(path) 转换。",
       "v2.16.4": "修复 v2.16.3 初始化崩溃：STRM 防抖相关状态（_strm_pending_files/_strm_pending_dirs/_strm_timer）在 init_plugin 中先被 stop_service 访问后才赋值，导致首次加载 AttributeError、前端报'配置加载失败'。现补为类属性默认值，确保 stop_service 安全访问。同步将作者署名为 DzAvril / BigRiceFrog。",
       "v2.16.3": "STRM 删除防抖合并：文件/目录删除事件先缓冲 delay_seconds（复用现有延迟时间，默认30s），聚合后再判断整目录删除还是部分删除。整目录删除（本地目录已不存在）一次性 delete_file 删除对应网盘目录（约1~2次API，不再逐文件狂打115/CloudDrive2），失败则回退逐文件；部分删除仍走原逐文件逻辑。电影删整电影目录，剧集删后无其它季则删整剧目录、仅删一季且保留有其它季则只删对应季。",
@@ -29,6 +29,18 @@
     "history": {
       "v1.1.6": "修复 qB 限速单位 bug：原版 qB 直接调用原始 API（字节/秒）导致限速差 1024 倍；改为统一走 change_torrent 封装，qB 与 TR 均按 KB/秒。",
       "v1.1.5": "原版 by ClarkChen。"
+    }
+  },
+  "DownloaderTraffic": {
+    "name": "下载器流量统计",
+    "description": "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点；月度上传超阈值自动全局限速、月初按 Cron 自动恢复；支持历史数据自动保留清理。",
+    "labels": "下载器,流量统计,qBittorrent,Transmission,PT",
+    "version": "1.6.1",
+    "author": "BigRiceFrog",
+    "level": 1,
+    "v2": true,
+    "history": {
+      "v1.6.1": "初始登记到插件市场（修复此前遗漏 package.v2.json / package.json 条目、导致市场搜索不到的问题）；按年/月/日统计下载器上传/下载流量并细分到各 PT 站点，月度阈值超限自动全局限速、月初 Cron 自动恢复，SQLite 落盘 + Vue 图表详情页。"
     }
   }
 }
