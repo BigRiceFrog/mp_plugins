@@ -18,7 +18,7 @@
       "v2.16": "基于 DzAvril 清理媒体文件 v2.16。"
     }
   },
-  "Limit": {
+  "LimitKbFix": {
     "name": "自动限速（KB单位修复版）",
     "description": "给 qBittorrent / Transmission 的种子按标签限速。修复原版 qB 限速单位被当作字节/秒（差 1024 倍）的 bug，现 qB 与 TR 统一以 KB/秒为单位。",
     "labels": "下载器,限速,qBittorrent,Transmission,PT",

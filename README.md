@@ -35,6 +35,8 @@
 
 ### 自动限速（KB单位修复版）v1.1.6
 
+**注意**：本插件在 MoviePilot 中注册为独立 id `LimitKbFix`，可与原作者 ClarkChen 的「自动限速」(`Limit`) 同时安装、互不冲突；但两者功能完全重叠，**不要同时启用**，否则会对同一批种子重复限速。
+
 基于 ClarkChen「自动限速」v1.1.5 的个人修复版，给 qBittorrent / Transmission 的种子按标签限速。
 
 **修复内容**：原版给 qBittorrent 限速时直接调用 qB 原始 API（单位字节/秒），而给 Transmission 走 MoviePilot 封装（单位 KB/秒），导致同一份配置下 qB 限速偏小 1024 倍（需填 `102400` 才约等于 100 KB/s）。修正版让 qB 也走 `change_torrent` 封装，二者统一以 **KB/秒** 为单位。
