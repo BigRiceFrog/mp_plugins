@@ -21,6 +21,11 @@ from app.chain.storage import StorageChain
 from app import schemas
 
 try:
+    from fastapi import Request
+except ImportError:
+    Request = None
+
+try:
     from watchdog.events import FileSystemEventHandler
     from watchdog.observers.polling import PollingObserver
 except ImportError:
@@ -82,6 +87,8 @@ except ImportError:
 state_lock = threading.Lock()
 deletion_queue_lock = threading.Lock()
 strm_pending_lock = threading.Lock()
+# 对账扫描互斥：手动触发与定时轮不叠加执行
+reconcile_lock = threading.Lock()
 
 
 class FileInfo(NamedTuple):
@@ -309,7 +316,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
     # 插件图标
     plugin_icon = "Ombi_A.png"
     # 插件版本
-    plugin_version = "2.16.7"
+    plugin_version = "2.17.0"
     # 插件作者
     plugin_author = "DzAvril / BigRiceFrog"
     # 作者主页
@@ -381,6 +388,14 @@ class RemoveLinkJellyfinFix(_PluginBase):
     # 延迟删除定时器
     _deletion_timer = None
 
+    # 对账扫描（不依赖文件系统事件的兜底）
+    _enable_poll_scan = True
+    _poll_interval = 1800
+    _poll_timer = None
+    # 实际生效的监控根目录（类属性给默认值，避免 init_plugin 前被访问）
+    _hardlink_monitor_dirs: List[str] = []
+    _strm_monitor_dirs: List[str] = []
+
     # STRM 删除防抖缓冲（类属性默认值，防止 stop_service 在 init_plugin 之前访问时报错）
     _strm_pending_files = set()
     _strm_pending_dirs = set()
@@ -438,8 +453,21 @@ class RemoveLinkJellyfinFix(_PluginBase):
             except (TypeError, ValueError):
                 self._delay_seconds = 30
 
+            # 对账扫描：文件系统事件在容器/网络盘/宿主机删除等场景下不可靠，
+            # 用周期性重扫兜底，避免整棵子树脱管后删除完全无反应。
+            self._enable_poll_scan = bool(config.get("enable_poll_scan", True))
+            poll_interval = config.get("poll_interval_seconds", 1800)
+            try:
+                self._poll_interval = max(60, min(86400, int(poll_interval)))
+            except (TypeError, ValueError):
+                self._poll_interval = 1800
+
         # 停止现有任务
         self.stop_service()
+
+        # 监控根目录按本次配置重建
+        self._hardlink_monitor_dirs = []
+        self._strm_monitor_dirs = []
 
         # 初始化延迟删除队列
         self.deletion_queue = []
@@ -552,20 +580,93 @@ class RemoveLinkJellyfinFix(_PluginBase):
             # 合并所有监控目录用于文件状态更新
             all_monitor_dirs = hardlink_monitor_dirs + strm_monitor_dirs
 
+            # 记录生效的监控根目录：对账扫描与空目录边界判断都要用
+            self._hardlink_monitor_dirs = hardlink_monitor_dirs
+            self._strm_monitor_dirs = strm_monitor_dirs
+
             # 更新监控集合 - 在所有线程停止后安全获取锁
             with state_lock:
                 self.file_state = updateState(all_monitor_dirs)
                 logger.debug("监控集合更新完成")
 
+            # 启动对账扫描兜底
+            if self._enable_poll_scan:
+                if not all_monitor_dirs:
+                    logger.warning("对账扫描已启用，但未配置任何监控目录")
+                else:
+                    logger.info(
+                        f"对账扫描已启用，每 {self._poll_interval} 秒重扫监控目录，"
+                        "用于兜底文件系统事件丢失"
+                    )
+                    self._start_poll_timer()
+
     def get_state(self) -> bool:
         return self._enabled
 
-    @staticmethod
-    def get_command() -> List[Dict[str, Any]]:
-        pass
+    def get_command(self) -> List[Dict[str, Any]]:
+        return [{
+            "cmd": "/removelink_scan",
+            "event": EventType.PluginAction,
+            "desc": "立即执行一次对账扫描",
+            "category": "媒体文件清理",
+            "data": {"action": "removelink_scan"}
+        }]
+
+    def handle_command(self, event):
+        if not event or not event.event_data:
+            return
+        if event.event_data.get("action") != "removelink_scan":
+            return
+        return self._manual_scan()
 
     def get_api(self) -> List[Dict[str, Any]]:
-        pass
+        """
+        MP 会在每个 path 前自动拼接插件类名，最终路由为
+        /api/v1/plugin/RemoveLinkJellyfinFix/scan（同时生成 v2 镜像路由）。
+        插件 API 只在 MoviePilot 重启时注册，改完需重启才生效。
+        """
+        return [
+            {
+                "path": "/scan",
+                "endpoint": self.api_scan,
+                "methods": ["GET"],
+                "auth": "bear",
+                "summary": "立即执行一次对账扫描",
+                "description": "忽略定时间隔，立刻把监控目录与 file_state 对账一次，返回本轮统计",
+            },
+        ]
+
+    def api_scan(self, request: Request):
+        return self._manual_scan()
+
+    def _manual_scan(self) -> Dict[str, Any]:
+        """
+        手动触发一轮对账扫描，把结果同时写进日志和 MP 通知，
+        这样无需打开终端看业务日志也能确认扫描跑过、发现了什么。
+        """
+        result = self.run_reconcile_now()
+        if not result.get("ok"):
+            text = f"⚠️ {result.get('error', '未知错误')}"
+        else:
+            text = (
+                f"🔍 扫描 {len(result.get('roots') or [])} 个目录，"
+                f"共 {result.get('scanned_files', 0)} 个文件，"
+                f"补录 {result.get('added_files', 0)} 个，"
+                f"发现已删除 {result.get('deleted_files', 0)} 个，"
+                f"待清理队列 {result.get('queued_files', 0)} 个，"
+                f"耗时 {result.get('elapsed_seconds', 0)} 秒"
+            )
+            skipped = result.get("skipped_roots") or []
+            if skipped:
+                text += f"\n⛔ 跳过不可用目录：{', '.join(skipped)}"
+        logger.info(f"手动对账扫描：{text}")
+        try:
+            self.post_message(mtype=NotificationType.SiteMessage,
+                              title="🔄 对账扫描",
+                              text=text)
+        except Exception as e:
+            logger.debug(f"手动对账扫描通知发送失败：{str(e)}")
+        return result
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
         return [
@@ -861,6 +962,99 @@ class RemoveLinkJellyfinFix(_PluginBase):
                             },
                         ],
                     },
+                    # 对账扫描配置分隔线
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12},
+                                "content": [
+                                    {
+                                        "component": "VDivider",
+                                        "props": {"style": "margin: 20px 0;"},
+                                    }
+                                ],
+                            },
+                        ],
+                    },
+                    # 对账扫描配置标题
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12},
+                                "content": [
+                                    {
+                                        "component": "VAlert",
+                                        "props": {
+                                            "type": "primary",
+                                            "variant": "tonal",
+                                            "title": "🔄 对账扫描（事件丢失兜底）",
+                                            "text": "定期重扫监控目录：目录里已消失的文件按删除处理，新出现的文件补入监控。不依赖文件系统事件，用于兜底 Docker 卷挂载、宿主机进程删除、inotify 子树未挂上监视等收不到删除事件的场景。",
+                                        },
+                                    }
+                                ],
+                            },
+                        ],
+                    },
+                    # 对账扫描开关与间隔
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 6},
+                                "content": [
+                                    {
+                                        "component": "VSwitch",
+                                        "props": {
+                                            "model": "enable_poll_scan",
+                                            "label": "启用对账扫描",
+                                        },
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 6},
+                                "content": [
+                                    {
+                                        "component": "VTextField",
+                                        "props": {
+                                            "model": "poll_interval_seconds",
+                                            "label": "扫描间隔(秒)",
+                                            "type": "number",
+                                            "min": 60,
+                                            "max": 86400,
+                                            "placeholder": "1800",
+                                        },
+                                    }
+                                ],
+                            },
+                        ],
+                    },
+                    # 对账扫描配置说明
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12},
+                                "content": [
+                                    {
+                                        "component": "VAlert",
+                                        "props": {
+                                            "type": "info",
+                                            "variant": "tonal",
+                                            "text": "每轮只列出监控目录下的文件名（不读取文件内容、不逐个 stat），代价约等于一次目录树遍历。媒体库很大或走 USB/网盘挂载时可以把间隔调大，例如 3600 秒。删除仍走既有的延迟删除队列，目录暂不可读、挂载抖动不会误删文件。想立刻验证一次：在 MoviePilot 聊天框输入 /removelink_scan（插件命令，保存配置并重启 MP 后可用），或调用 GET /api/v1/plugin/RemoveLinkJellyfinFix/scan；结果会写入业务日志并推送通知。测试期间也可以把间隔临时改成 60 秒。",
+                                        },
+                                    }
+                                ],
+                            },
+                        ],
+                    },
                     # STRM清理配置分隔线
                     {
                         "component": "VRow",
@@ -1022,6 +1216,8 @@ class RemoveLinkJellyfinFix(_PluginBase):
             "delete_history": False,
             "delayed_deletion": True,
             "delay_seconds": 30,
+            "enable_poll_scan": True,
+            "poll_interval_seconds": 1800,
             "monitor_dirs": "",
             "exclude_dirs": "",
             "exclude_keywords": "",
@@ -1050,6 +1246,15 @@ class RemoveLinkJellyfinFix(_PluginBase):
                     logger.error(f"停止目录监控失败：{str(e)}")
         self._observer = []
         logger.debug("文件监控已停止")
+
+        # 停止对账扫描定时器
+        if self._poll_timer:
+            try:
+                self._poll_timer.cancel()
+            except Exception:
+                pass
+            self._poll_timer = None
+            logger.debug("对账扫描定时器已停止")
 
         # 停止延迟删除定时器
         if self._deletion_timer:
@@ -1141,6 +1346,229 @@ class RemoveLinkJellyfinFix(_PluginBase):
             if exclude_dir and self._is_same_or_child_path(file_path, exclude_dir):
                 return True
         return False
+
+    def _is_ignored_file(self, file_path: Path) -> bool:
+        """
+        对账扫描是否忽略该文件，与监控事件侧的过滤规则保持一致
+        """
+        if file_path.suffix in [".!qB", ".part", ".mp", ".tmp", ".temp"]:
+            return True
+        for keyword in (self.exclude_keywords or "").split("\n"):
+            if keyword and keyword in str(file_path):
+                return True
+        return False
+
+    def _all_monitor_dirs(self) -> List[str]:
+        """
+        全部监控根目录（硬链接 + STRM）
+        """
+        dirs = [d for d in self._hardlink_monitor_dirs + self._strm_monitor_dirs if d]
+        if dirs:
+            return dirs
+        return [
+            d.strip() for d in (self.monitor_dirs or "").split("\n") if d.strip()
+        ]
+
+    def _is_monitor_root(self, path) -> bool:
+        """
+        path 是否就是某个监控根目录本身（规范化后精确比较，不含子目录）
+        """
+        normalized = self._normalize_config_path(str(path))
+        return any(
+            normalized == self._normalize_config_path(directory)
+            for directory in self._all_monitor_dirs()
+        )
+
+    def _start_poll_timer(self):
+        """
+        安排下一轮对账扫描
+        """
+        self._poll_timer = threading.Timer(self._poll_interval, self._poll_scan)
+        self._poll_timer.daemon = True
+        self._poll_timer.start()
+
+    def _poll_scan(self):
+        """
+        执行一轮对账扫描，并安排下一轮
+        """
+        try:
+            if reconcile_lock.acquire(blocking=False):
+                try:
+                    self._reconcile_file_state()
+                finally:
+                    reconcile_lock.release()
+            else:
+                logger.debug("对账扫描本轮跳过：上一轮仍在执行中")
+        except Exception as e:
+            logger.error(f"对账扫描异常：{str(e)} - {traceback.format_exc()}")
+        finally:
+            if self._enabled:
+                self._start_poll_timer()
+
+    def run_reconcile_now(self) -> Dict[str, Any]:
+        """
+        立即执行一轮对账扫描并返回统计摘要，供 API / 插件命令手动触发
+        """
+        if not self._enabled:
+            # 插件未启用时监控目录与 file_state 都没有建立，扫了也没有意义
+            return {"ok": False, "error": "插件未启用，请先开启插件开关并保存配置"}
+        if not reconcile_lock.acquire(blocking=False):
+            return {"ok": False, "error": "上一轮对账扫描尚未结束，请稍候再试"}
+        try:
+            result = self._reconcile_file_state()
+            result["ok"] = True
+            return result
+        except Exception as e:
+            logger.error(f"手动对账扫描失败：{str(e)} - {traceback.format_exc()}")
+            return {"ok": False, "error": str(e)}
+        finally:
+            reconcile_lock.release()
+
+    def _reconcile_file_state(self):
+        """
+        重扫监控目录并与 file_state 对账。
+
+        inotify 的 watch 是按目录逐个挂载的，任何一层没挂上（新建目录时事件
+        丢失、watch 额度打满、插件重载 / 容器重启期间产生的目录、宿主机进程
+        删除文件），那一整棵子树都不会再上报事件，表现为"删了片子但插件毫无
+        反应"。对账扫描不依赖事件：目录里没了的路径按文件删除处理，新出现的
+        路径补进监控，因此事件丢失只影响响应时延，不会漏删。
+
+        误删保护：删除走既有的延迟删除队列，_execute_delayed_deletion 执行前
+        会重新确认文件确实不存在，所以挂载暂不可读 / U 盘休眠造成的目录缺失
+        不会真的删掉任何文件。
+        """
+        roots = [(directory, False) for directory in self._hardlink_monitor_dirs] + [
+            (directory, True) for directory in self._strm_monitor_dirs
+        ]
+        roots = [item for item in roots if item[0]]
+        stats: Dict[str, Any] = {
+            "roots": [item[0] for item in roots],
+            "skipped_roots": [],
+            "scanned_files": 0,
+            "added_files": 0,
+            "deleted_files": 0,
+            "elapsed_seconds": 0.0,
+        }
+        if not roots:
+            stats["message"] = "未配置任何监控目录"
+            return stats
+
+        start_time = time.time()
+        scanned_total = 0
+        added_count = 0
+        # (路径, 是否 STRM 根目录)，锁外处理
+        deleted_paths = []
+
+        for mon_path, is_strm_root in roots:
+            if not os.path.isdir(mon_path):
+                logger.warning(
+                    f"对账扫描跳过当前不可用的监控目录：{mon_path}"
+                )
+                stats["skipped_roots"].append(mon_path)
+                continue
+
+            # 只列目录项、不逐个 stat：容器挂载 / 网盘 FUSE 上 stat 要往返宿主机，
+            # 是整轮扫描里最贵的一步，而对账只需要知道“哪些路径还在”。
+            # dev/inode 只在发现新路径时才取，数量通常接近 0。
+            current = set()
+            scan_errors = []
+
+            def _on_error(error):
+                scan_errors.append(error)
+
+            try:
+                for root, _, files in os.walk(mon_path, onerror=_on_error):
+                    for file_name in files:
+                        current.add(str(Path(root) / file_name))
+            except Exception as e:
+                logger.error(f"对账扫描目录 {mon_path} 失败：{str(e)}")
+                stats["skipped_roots"].append(mon_path)
+                continue
+
+            scanned_total += len(current)
+
+            with state_lock:
+                tracked = [
+                    path
+                    for path in self.file_state
+                    if self._is_path_under_dirs(path, [mon_path])
+                ]
+
+                if not current:
+                    if tracked:
+                        logger.warning(
+                            f"对账扫描在 {mon_path} 未读到任何文件，但仍有 "
+                            f"{len(tracked)} 条监控记录，视为目录暂不可读，跳过该目录"
+                        )
+                        stats["skipped_roots"].append(mon_path)
+                    continue
+
+                if scan_errors:
+                    logger.warning(
+                        f"对账扫描 {mon_path} 有 {len(scan_errors)} 处目录读取失败，"
+                        f"本轮不据缺失下结论（首个错误：{scan_errors[0]}）"
+                    )
+
+                new_paths = [
+                    path
+                    for path in current
+                    if path not in self.file_state
+                    and not self._is_ignored_file(Path(path))
+                ]
+                if not scan_errors:
+                    deleted_paths.extend(
+                        (path, is_strm_root)
+                        for path in tracked
+                        if path not in current
+                    )
+
+            for path_str in new_paths:
+                try:
+                    stat_info = Path(path_str).stat()
+                except (OSError, PermissionError):
+                    continue
+                with state_lock:
+                    if path_str in self.file_state:
+                        continue
+                    self.file_state[path_str] = FileInfo(
+                        dev=stat_info.st_dev,
+                        inode=stat_info.st_ino,
+                        add_time=datetime.now(),
+                    )
+                    added_count += 1
+
+        for path_str, is_strm_root in deleted_paths:
+            logger.info(f"对账扫描发现文件已删除：{path_str}")
+            if is_strm_root:
+                # 事件侧只会被触发一次，对账每轮都会重看同一批路径，
+                # 所以这里必须先把记录消费掉，否则已处理过的 STRM 会被
+                # 反复送进聚合缓冲、重复调用网盘 API。
+                with state_lock:
+                    self.file_state.pop(path_str, None)
+                if Path(path_str).suffix.lower() == ".strm":
+                    self._buffer_strm_file_deleted(Path(path_str))
+            else:
+                self.handle_deleted(Path(path_str))
+
+        elapsed = time.time() - start_time
+        if added_count or deleted_paths:
+            logger.info(
+                f"对账扫描完成：补录 {added_count} 个新文件，"
+                f"发现 {len(deleted_paths)} 个已删除文件，"
+                f"共 {scanned_total} 个文件，耗时 {elapsed:.1f} 秒"
+            )
+        else:
+            logger.debug(
+                f"对账扫描完成：{scanned_total} 个文件无变化，耗时 {elapsed:.1f} 秒"
+            )
+
+        stats["scanned_files"] = scanned_total
+        stats["added_files"] = added_count
+        stats["deleted_files"] = len(deleted_paths)
+        stats["queued_files"] = len(self.deletion_queue)
+        stats["elapsed_seconds"] = round(elapsed, 1)
+        return stats
 
     @staticmethod
     def _parse_custom_scrap_extensions(custom_extensions: str) -> List[str]:
@@ -1245,7 +1673,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
             if not os.path.exists(parent_path):
                 break
             # 如果当前路径等于监控目录之一，停止向上检查
-            if parent_path in self.monitor_dirs.split("\n"):
+            if self._is_monitor_root(parent_path):
                 break
 
             # 若目录下只剩刮削文件，则清空文件夹
@@ -1518,21 +1946,14 @@ class RemoveLinkJellyfinFix(_PluginBase):
         """
         try:
             dir_path = Path(dir_path)
-            dir_str = self._normalize_config_path(str(dir_path))
 
             # 安全保护：监控根目录本身被删除通常意味着挂载点/存储异常，
             # 不能把整个监控目录里的所有文件当成“用户删除媒体”来清理。
-            monitor_roots = [
-                path.strip()
-                for path in self.monitor_dirs.split("\n")
-                if path.strip()
-            ]
-            for monitor_root in monitor_roots:
-                if dir_str == self._normalize_config_path(monitor_root):
-                    logger.warning(
-                        f"检测到监控根目录被删除，跳过目录级硬链接清理：{dir_path}"
-                    )
-                    return
+            if self._is_monitor_root(dir_path):
+                logger.warning(
+                    f"检测到监控根目录被删除，跳过目录级硬链接清理：{dir_path}"
+                )
+                return
 
             # 先从状态表取出候选文件路径。不要依赖目录当前是否存在，
             # 因为此时目录通常已经被 Jellyfin 一次性删除。
@@ -1581,21 +2002,14 @@ class RemoveLinkJellyfinFix(_PluginBase):
         """
         try:
             dir_path = Path(dir_path)
-            dir_str = self._normalize_config_path(str(dir_path))
 
             # 安全保护：监控根目录本身被删除通常意味着挂载点/存储异常，
             # 不能把整个监控目录当成“用户删除”来清理。
-            monitor_roots = [
-                path.strip()
-                for path in self.monitor_dirs.split("\n")
-                if path.strip()
-            ]
-            for monitor_root in monitor_roots:
-                if dir_str == self._normalize_config_path(monitor_root):
-                    logger.warning(
-                        f"检测到监控根目录被删除，跳过 STRM 目录级清理：{dir_path}"
-                    )
-                    return False, None, None
+            if self._is_monitor_root(dir_path):
+                logger.warning(
+                    f"检测到监控根目录被删除，跳过 STRM 目录级清理：{dir_path}"
+                )
+                return False, None, None
 
             # 本地目录 → 网盘目录路径
             storage_type, storage_dir = self._get_storage_path_from_strm_path(dir_path)
@@ -1846,7 +2260,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
             # 删除的文件信息
             file_info = self.file_state.get(str(file_path))
             if not file_info:
-                logger.debug(f"文件 {file_path} 未在监控列表中，跳过处理")
+                logger.info(f"文件 {file_path} 未在监控列表中，跳过处理")
                 return
             else:
                 deleted_inode = file_info.inode
