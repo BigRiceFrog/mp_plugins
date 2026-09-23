@@ -308,6 +308,31 @@ def updateState(monitor_dirs: List[str]):
     return file_state
 
 
+# 配置表单里「立即执行对账扫描」按钮的点击脚本。
+# MoviePilot 的 FormRender 会把 props 中以 on 开头的字符串编译成事件处理函数
+# （在 with(model) 作用域里求值），并把宿主注入的 window.MoviePilotAPI（带鉴权
+# 的插件 API 客户端）用于请求；scan_status 是表单模型里的键，改写它即可让结果
+# 直接显示在按钮下方，无需打开业务日志。
+_SCAN_BUTTON_JS = (
+    "async () => {"
+    " scan_status = '⏳ 正在扫描监控目录，请稍候…';"
+    " try {"
+    "  const resp = await window.MoviePilotAPI.get('plugin/RemoveLinkJellyfinFix/scan');"
+    "  const r = (resp && resp.data !== undefined) ? resp.data : resp;"
+    "  if (r && r.ok) {"
+    "   scan_status = '✅ 扫描 ' + (r.roots || []).length + ' 个目录 / ' + (r.scanned_files || 0)"
+    "    + ' 个文件，补录 ' + (r.added_files || 0) + ' 个，发现已删除 ' + (r.deleted_files || 0)"
+    "    + ' 个，待清理队列 ' + (r.queued_files || 0) + ' 个，耗时 ' + (r.elapsed_seconds || 0) + ' 秒';"
+    "   if ((r.skipped_roots || []).length) { scan_status += '；跳过不可用目录：' + r.skipped_roots.join('、'); }"
+    "  } else { scan_status = '⚠️ ' + ((r && r.error) || '扫描未执行'); }"
+    " } catch (e) {"
+    "  scan_status = '⚠️ 请求失败：' + (e && e.message ? e.message : e)"
+    "   + '（接口需重启 MoviePilot 后注册，也可在聊天框输入 /removelink_scan 触发）';"
+    " }"
+    "}"
+)
+
+
 class RemoveLinkJellyfinFix(_PluginBase):
     # 插件名称
     plugin_name = "清理媒体文件（Jellyfin修复版）"
@@ -316,7 +341,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
     # 插件图标
     plugin_icon = "Ombi_A.png"
     # 插件版本
-    plugin_version = "2.17.0"
+    plugin_version = "2.17.1"
     # 插件作者
     plugin_author = "DzAvril / BigRiceFrog"
     # 作者主页
@@ -1035,6 +1060,43 @@ class RemoveLinkJellyfinFix(_PluginBase):
                             },
                         ],
                     },
+                    # 手动触发一次对账扫描
+                    {
+                        "component": "VRow",
+                        "content": [
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": "auto"},
+                                "content": [
+                                    {
+                                        "component": "VBtn",
+                                        "props": {
+                                            "color": "primary",
+                                            "variant": "tonal",
+                                            "prependIcon": "mdi-magnify",
+                                            "onClick": _SCAN_BUTTON_JS,
+                                        },
+                                        "text": "立即执行对账扫描",
+                                    }
+                                ],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12},
+                                "content": [
+                                    {
+                                        "component": "VAlert",
+                                        "props": {
+                                            "variant": "tonal",
+                                            "type": "{{ scan_status.indexOf('⚠') >= 0 ? 'warning' : (scan_status.indexOf('✅') >= 0 ? 'success' : 'info') }}",
+                                            "text": "{{ scan_status }}",
+                                            "show": "!!scan_status",
+                                        },
+                                    }
+                                ],
+                            },
+                        ],
+                    },
                     # 对账扫描配置说明
                     {
                         "component": "VRow",
@@ -1048,7 +1110,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
                                         "props": {
                                             "type": "info",
                                             "variant": "tonal",
-                                            "text": "每轮只列出监控目录下的文件名（不读取文件内容、不逐个 stat），代价约等于一次目录树遍历。媒体库很大或走 USB/网盘挂载时可以把间隔调大，例如 3600 秒。删除仍走既有的延迟删除队列，目录暂不可读、挂载抖动不会误删文件。想立刻验证一次：在 MoviePilot 聊天框输入 /removelink_scan（插件命令，保存配置并重启 MP 后可用），或调用 GET /api/v1/plugin/RemoveLinkJellyfinFix/scan；结果会写入业务日志并推送通知。测试期间也可以把间隔临时改成 60 秒。",
+                                            "text": "每轮只列出监控目录下的文件名（不读取文件内容、不逐个 stat），代价约等于一次目录树遍历。媒体库很大或走 USB/网盘挂载时可以把间隔调大，例如 3600 秒。删除仍走既有的延迟删除队列，目录暂不可读、挂载抖动不会误删文件。点上方「立即执行对账扫描」可马上跑一轮并在按钮下方看到结果（首次使用需重启 MoviePilot 注册接口）；也可以在聊天框输入 /removelink_scan 触发。测试期间还可以把间隔临时改成 60 秒。",
                                         },
                                     }
                                 ],
@@ -1218,6 +1280,8 @@ class RemoveLinkJellyfinFix(_PluginBase):
             "delay_seconds": 30,
             "enable_poll_scan": True,
             "poll_interval_seconds": 1800,
+            # 仅用于「立即执行对账扫描」按钮在前端回显结果，插件本身不读取
+            "scan_status": "",
             "monitor_dirs": "",
             "exclude_dirs": "",
             "exclude_keywords": "",
