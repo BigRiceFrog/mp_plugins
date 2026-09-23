@@ -4,11 +4,20 @@
 
 > 本项目是个人修复集合，不代表 MoviePilot 官方插件。
 
+## 目录结构（V1 / V2 两套副本）
+
+本仓库同时保留两套插件目录，以兼容不同 MoviePilot 版本的插件加载约定：
+
+- `plugins/`（V1 目录）：当前含 `limitkbfix`、`removelinkjellyfinfix` 两个插件（`downloadertraffic` 仅在 V2 提供）；对应市场清单 `package.json`。
+- `plugins.v2/`（V2 目录）：含 `limitkbfix`、`removelinkjellyfinfix`、`downloadertraffic` 三个插件；对应市场清单 `package.v2.json`。
+
+> **重要**：`limitkbfix`、`removelinkjellyfinfix` 在两套目录中是**逐字节相同的副本**，修改其一时必须同步另一份，否则 V1 环境会加载到旧代码。详见下文「通用注意事项」。
+
 ## 插件列表
 
 | 插件 | 版本 | 说明 | 标签 |
 | --- | --- | --- | --- |
-| 清理媒体文件（Jellyfin修复版） | v2.17.1 | 修复 Jellyfin 删除媒体目录时硬链接未同步清理，并新增对账扫描兜底文件系统事件丢失（配置页可一键立即执行） | 文件整理,媒体库,Jellyfin,硬链接 |
+| 清理媒体文件（Jellyfin修复版） | v2.17.2 | 修复 Jellyfin 删除媒体目录时硬链接未同步清理，并新增对账扫描兜底文件系统事件丢失（配置页可一键立即执行） | 文件整理,媒体库,Jellyfin,硬链接 |
 | 自动限速（KB单位修复版） | v1.1.6 | 修复 qBittorrent 限速单位错误，qB 与 Transmission 统一以 KB 为单位 | 下载器,限速,qBittorrent,Transmission,PT |
 | 下载器流量统计 | v1.6.1 | 按年/月/日统计下载器上传/下载流量并细分到每个 PT 站点；月度上传超阈值自动全局限速、月初按 Cron 自动恢复；支持历史数据自动保留清理 | 下载器,流量统计,qBittorrent,Transmission,PT |
 
@@ -25,9 +34,17 @@
 
 ## 插件说明
 
-### 清理媒体文件（Jellyfin修复版）v2.17.1
+### 清理媒体文件（Jellyfin修复版）v2.17.2
 
 基于 MoviePilot「清理媒体文件」v2.16 的个人兼容性修正版。
+
+**v2.17.2 修复（三个正确性问题）**：
+
+1. `/removelink_scan` 聊天命令此前**未注册 `PluginAction` 事件监听**，命令触发后 `handle_command` 收不到事件（而配置页按钮 / API 能正常工作），现已在 `init_plugin` 中显式注册；
+2. 延迟删除的「重新硬链接」检查在锁内直接迭代 `file_state` 原始 dict，watchdog 线程并发新增条目时会抛 `dictionary changed size during iteration`，异常被吞后任务被标记已处理，造成**静默漏删**；现改为锁内快照、锁外迭代；
+3. 启动监控失败时调用的 `self.systemmessage` **从未初始化**，会抛 `AttributeError` 并中断后续目录的监控启动；现初始化 `SystemMessage` 并新增 `_put_systemmessage` 降级容错（不可用时仅写业务日志）。
+
+> 本修复同时作用于 `plugins/`（V1）与 `plugins.v2/`（V2）两份副本，保持逐字节一致。
 
 **修复内容**：Jellyfin 删除整个媒体目录时，文件监控只收到目录删除事件，导致原插件没有继续进入文件级硬链接清理流程。修正版利用插件已有的 `file_state` 找出该目录下原先记录的文件，并继续调用原有的文件删除处理流程，保留 v2.16 原有的延迟删除、inode/device 硬链接判断、硬链接同步清理、STRM 监控、刮削文件处理、转移记录处理及重新硬链接保护逻辑。
 
@@ -86,8 +103,8 @@
 ## 通用注意事项
 
 - 仓库内各插件均为独立修复版，请勿与对应的原版插件同时启用，避免配置/监控冲突。
-- **发布新版本必须同步两处版本号**，否则 MP 市场不提示更新、仍显示旧版本：
-  1. 插件代码内的 `plugin_version`（如 `plugins.v2/limit/__init__.py`）；
+- **发布新版本必须同步版本号**，否则 MP 市场不提示更新、仍显示旧版本：
+  1. 插件代码内的 `plugin_version`；**若插件同时存在于 `plugins/` 与 `plugins.v2/`（如 `limitkbfix`、`removelinkjellyfinfix`），两份副本的代码与版本号必须一起改**；
   2. 仓库根 `package.json` / `package.v2.json` 中对应插件的 `version` 字段（MoviePilot 实际读取的是这一处），并同步追加 `history` 变更说明。
   > 踩坑：曾只改了 `plugin_version` 而漏改 `package.v2.json`，导致 MP 长时间显示旧版本。
 - 插件 API 路由在安装 / 更新后需**重启 MoviePilot** 才会重新注册；详情页 404、设置页下拉为空时优先排查是否未重启。

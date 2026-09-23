@@ -20,6 +20,16 @@ from app.schemas.types import EventType
 from app.chain.storage import StorageChain
 from app import schemas
 
+# SystemMessage：官方路径为 app.message；个别版本无此模块时置 None，
+# 使用侧 _put_systemmessage 再做容错，避免 init_plugin 抛 AttributeError
+try:
+    from app.message import SystemMessage
+except Exception:  # pragma: no cover
+    try:
+        from app.utils.systemmessage import SystemMessage
+    except Exception:  # pragma: no cover
+        SystemMessage = None
+
 try:
     from fastapi import Request
 except ImportError:
@@ -341,7 +351,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
     # 插件图标
     plugin_icon = "Ombi_A.png"
     # 插件版本
-    plugin_version = "2.17.1"
+    plugin_version = "2.17.2"
     # 插件作者
     plugin_author = "DzAvril / BigRiceFrog"
     # 作者主页
@@ -454,6 +464,16 @@ class RemoveLinkJellyfinFix(_PluginBase):
         logger.info(f"初始化媒体文件清理插件")
         self._transferhistory = TransferHistoryOper()
         self._storagechain = StorageChain()
+        # 系统消息通道：启动监控失败等场景要能在 MP 界面提示用户。
+        # 实例缺失时 _put_systemmessage 内部兜底初始化，这里只负责准备导入路径。
+        if SystemMessage is not None:
+            self.systemmessage = SystemMessage()
+        # 聊天命令 /removelink_scan 的实际处理函数必须注册到 PluginAction 事件：
+        # get_command 只声明命令，用户触发后 MP 发事件，不监听则命令收不到（v2.17.2 修复）
+        try:
+            eventmanager.register(EventType.PluginAction)(self.handle_command)
+        except Exception as e:
+            logger.debug(f"注册 /removelink_scan 命令事件监听失败：{str(e)}")
 
         if config:
             self._enabled = config.get("enabled")
@@ -562,10 +582,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
                         )
                     else:
                         logger.error(f"{mon_path} 启动硬链接监控失败：{err_msg}")
-                    self.systemmessage.put(
-                        f"{mon_path} 启动硬链接监控失败：{err_msg}",
-                        title="媒体文件清理",
-                    )
+                    self._put_systemmessage(f"{mon_path} 启动硬链接监控失败：{err_msg}")
 
             # 启动 STRM 监控
             for mon_path in strm_monitor_dirs:
@@ -597,10 +614,7 @@ class RemoveLinkJellyfinFix(_PluginBase):
                         )
                     else:
                         logger.error(f"{mon_path} 启动 STRM 监控失败：{err_msg}")
-                    self.systemmessage.put(
-                        f"{mon_path} 启动 STRM 监控失败：{err_msg}",
-                        title="媒体文件清理",
-                    )
+                    self._put_systemmessage(f"{mon_path} 启动 STRM 监控失败：{err_msg}")
 
             # 合并所有监控目录用于文件状态更新
             all_monitor_dirs = hardlink_monitor_dirs + strm_monitor_dirs
@@ -1358,6 +1372,20 @@ class RemoveLinkJellyfinFix(_PluginBase):
 
         logger.debug("服务停止完成")
 
+    def _put_systemmessage(self, text: str, title: str = "媒体文件清理"):
+        """
+        发送 MP 系统消息；SystemMessage 不可用时降级写业务日志，
+        绝不让提示通道本身把 init/监控流程打断。
+        """
+        try:
+            if not getattr(self, "systemmessage", None):
+                if SystemMessage is None:
+                    raise RuntimeError("当前 MoviePilot 版本未提供 SystemMessage")
+                self.systemmessage = SystemMessage()
+            self.systemmessage.put(text, title=title)
+        except Exception as e:
+            logger.error(f"{text}（系统消息发送失败：{str(e)}）")
+
     @staticmethod
     def _normalize_config_path(config_path: str) -> str:
         """规范化配置中的目录路径，保留不存在路径的可比较形式。"""
@@ -1816,36 +1844,39 @@ class RemoveLinkJellyfinFix(_PluginBase):
                 logger.info(f"文件 {task.file_path} 已被重新创建，跳过删除操作")
                 return
 
-            # 检查是否有相同inode的新文件（重新硬链接的情况）
+            # 锁内只做快照：watchdog 线程会在锁内向 file_state 增删条目，
+            # 持锁迭代原始 dict 仍可能撞上迭代期间的新增（dictionary changed
+            # size），异常被外层捕获后任务被标记已处理，造成静默漏删（v2.17.2 修复）
             with state_lock:
-                for path, file_info in self.file_state.items():
-                    if self._same_file_identity(
-                        file_info, task.deleted_dev, task.deleted_inode
-                    ) and path != str(task.file_path):
-                        # 重整/改名会在删除旧硬链接的前后创建同 inode 的新路径。
-                        # 但下载源文件通常早于媒体库硬链接创建；仅比较两个加入监控
-                        # 的时间会把“下载器删除源文件”误判为重新硬链接，导致媒体库
-                        # 硬链接永远不清理（#54/#55）。候选路径必须在删除事件附近
-                        # 才能作为重新整理的替代文件保留。事件到达可能乱序，因此接受
-                        # 删除事件之前一个延迟窗口内创建、或删除事件之后才创建的路径。
-                        rehardlink_window = timedelta(
-                            seconds=max(5, self._delay_seconds)
+                state_snapshot = list(self.file_state.items())
+            for path, file_info in state_snapshot:
+                if self._same_file_identity(
+                    file_info, task.deleted_dev, task.deleted_inode
+                ) and path != str(task.file_path):
+                    # 重整/改名会在删除旧硬链接的前后创建同 inode 的新路径。
+                    # 但下载源文件通常早于媒体库硬链接创建；仅比较两个加入监控
+                    # 的时间会把“下载器删除源文件”误判为重新硬链接，导致媒体库
+                    # 硬链接永远不清理（#54/#55）。候选路径必须在删除事件附近
+                    # 才能作为重新整理的替代文件保留。事件到达可能乱序，因此接受
+                    # 删除事件之前一个延迟窗口内创建、或删除事件之后才创建的路径。
+                    rehardlink_window = timedelta(
+                        seconds=max(5, self._delay_seconds)
+                    )
+                    is_recent_rehardlink = (
+                        file_info.add_time >= task.timestamp - rehardlink_window
+                    )
+                    if (
+                        file_info.add_time > task.deleted_add_time
+                        and is_recent_rehardlink
+                    ):
+                        logger.info(
+                            f"检测到相同文件实体的新文件 {path}，添加时间 {file_info.add_time} 接近删除事件 {task.timestamp}，可能是重新硬链接，跳过硬链接删除"
                         )
-                        is_recent_rehardlink = (
-                            file_info.add_time >= task.timestamp - rehardlink_window
-                        )
-                        if (
-                            file_info.add_time > task.deleted_add_time
-                            and is_recent_rehardlink
-                        ):
-                            logger.info(
-                                f"检测到相同文件实体的新文件 {path}，添加时间 {file_info.add_time} 接近删除事件 {task.timestamp}，可能是重新硬链接，跳过硬链接删除"
-                            )
-                            # 重新整理/重命名会生成新的媒体硬链接，但旧文件名对应的
-                            # nfo、jpg、trickplay 等刮削文件不会自动消失。此时只清理
-                            # 被删除旧路径同名的刮削文件，不能删除新硬链接、转移记录或种子。
-                            self.delete_scrap_infos(task.file_path)
-                            return
+                        # 重新整理/重命名会生成新的媒体硬链接，但旧文件名对应的
+                        # nfo、jpg、trickplay 等刮削文件不会自动消失。此时只清理
+                        # 被删除旧路径同名的刮削文件，不能删除新硬链接、转移记录或种子。
+                        self.delete_scrap_infos(task.file_path)
+                        return
 
             # 延迟执行所有删除相关操作
             logger.debug(
