@@ -38,11 +38,12 @@
     "name": "下载器流量统计",
     "description": "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点；月度上传超阈值自动全局限速、月初按 Cron 自动恢复；支持历史数据自动保留清理。",
     "labels": "下载器,流量统计,qBittorrent,Transmission,PT",
-    "version": "1.6.1",
+    "version": "1.6.3",
     "author": "BigRiceFrog",
     "level": 1,
     "v2": true,
     "history": {
+      "v1.6.3": "修复域名映射的 bug：站点域名映射合并时 SELECT 漏传参数 (old,)，导致 tracker 域名（如 t.pthome.org）无法合并进映射后的站点名（如铂金家）；补上参数，并支持每次采集前自动按当前映射修正历史数据、新增「立即应用映射」命令与 API。",
       "v1.6.1": "初始登记到插件市场（修复此前遗漏 package.v2.json / package.json 条目、导致市场搜索不到的问题）；按年/月/日统计下载器上传/下载流量并细分到各 PT 站点，月度阈值超限自动全局限速、月初 Cron 自动恢复，SQLite 落盘 + Vue 图表详情页。"
     }
   }

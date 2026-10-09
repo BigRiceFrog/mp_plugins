@@ -217,7 +217,7 @@ class DownloaderTraffic(_PluginBase):
 
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.6.1"
+    plugin_version = "1.6.3"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -583,14 +583,28 @@ class DownloaderTraffic(_PluginBase):
             "desc": "立即采集下载器流量",
             "category": "下载器流量统计",
             "data": {"action": "downloader_traffic_collect"}
+        }, {
+            "cmd": "/downloader_traffic_apply_mapping",
+            "event": EventType.PluginAction,
+            "desc": "按当前站点域名映射，立即修正历史数据中的原始域名站点名",
+            "category": "下载器流量统计",
+            "data": {"action": "downloader_traffic_apply_mapping"}
         }]
 
     def handle_command(self, event):
         if not event or not event.event_data:
             return
-        if event.event_data.get("action") != "downloader_traffic_collect":
-            return
-        self._collect()
+        action = event.event_data.get("action")
+        if action == "downloader_traffic_collect":
+            self._collect()
+        elif action == "downloader_traffic_apply_mapping":
+            # 立即按当前（已保存的）站点域名映射，把库里仍是原始 tracker 域名的旧记录
+            # 重命名 / 合并到站点名。无需等待采集周期，保存映射后可直接执行。
+            try:
+                self._migrate_site_rows()
+                logger.info("下载器流量统计：已手动执行站点域名映射修正")
+            except Exception as e:
+                logger.error(f"下载器流量统计：手动执行映射修正失败 {e}")
 
     # =====================================================================
     # 对外 API（供页面 / 外部调用）
@@ -667,6 +681,14 @@ class DownloaderTraffic(_PluginBase):
                 "auth": "bear",
                 "summary": "清空全部采集历史数据",
                 "description": "清空 traffic_records 与 torrent_snapshots 表。不可恢复；前端需二次确认后调用。清空后下一次采集会以当前值为基准重新入账",
+            },
+            {
+                "path": "/apply-mapping",
+                "endpoint": self.api_apply_mapping,
+                "methods": ["POST", "GET"],
+                "auth": "bear",
+                "summary": "按当前映射立即修正历史站点名",
+                "description": "立即执行站点域名映射迁移：把库里仍是原始 tracker 域名的旧记录重命名/合并到映射后的站点名。无需等待采集周期，保存映射配置后即可调用",
             },
         ]
 
@@ -875,6 +897,36 @@ class DownloaderTraffic(_PluginBase):
             logger.error(f"下载器流量统计：清空历史数据失败：{e}\n{traceback.format_exc()}")
             return {"ok": False, "error": str(e)}
 
+    def api_apply_mapping(self, request: Request):
+        """按当前（已保存的）站点域名映射，立即把库里仍是原始 tracker 域名的旧记录
+        重命名 / 合并到站点名。幂等；映射为空时直接返回提示、不做任何改动。"""
+        if self._db is None:
+            return {"ok": False, "error": "数据库未初始化"}
+        if not self._site_domain_map:
+            return {
+                "ok": False,
+                "error": "当前未配置「手动站点域名映射」，请先在插件设置填写后再执行",
+            }
+        try:
+            before = [r[0] for r in self._db.execute(
+                "SELECT DISTINCT site FROM traffic_records") if r[0]]
+            self._migrate_site_rows()
+            after = [r[0] for r in self._db.execute(
+                "SELECT DISTINCT site FROM traffic_records") if r[0]]
+            logger.info(
+                f"下载器流量统计：手动应用域名映射完成。"
+                f"迁移前站点={before}；迁移后站点={after}"
+            )
+            return {
+                "ok": True,
+                "before": before,
+                "after": after,
+                "message": "已按当前站点域名映射修正历史数据",
+            }
+        except Exception as e:  # pragma: no cover
+            logger.error(f"下载器流量统计：应用域名映射失败：{e}\n{traceback.format_exc()}")
+            return {"ok": False, "error": str(e)}
+
     # =====================================================================
     # 详情页（极简版，真实数据走上面的 API）
     # =====================================================================
@@ -913,6 +965,15 @@ class DownloaderTraffic(_PluginBase):
             return
         if self._db is None:
             self.__init_db()
+
+        # 每次采集前，自动把库里仍是「原始 tracker 域名」的旧记录，按当前（已保存的）
+        # 站点域名映射重命名 / 合并到站点名。这样在「保存映射配置并重启 MoviePilot」后，
+        # 下一次采集（或点插件页「立即采集」）即自动修正历史数据，无需手动清空或改 SQL。
+        # 该操作幂等且开销极小：无待改记录时直接跳过；映射不匹配的行沿用原有迁移策略处理。
+        try:
+            self._migrate_site_rows()
+        except Exception as e:  # pragma: no cover
+            logger.debug(f"下载器流量统计：采集前站点名迁移失败（不影响本次采集）{e}")
 
         now = datetime.now()
         date_str = now.strftime("%Y-%m-%d")
@@ -1419,6 +1480,10 @@ class DownloaderTraffic(_PluginBase):
         """
         if self._db is None:
             return
+        # 映射为空时不做任何改动：避免「配置未进内存 → 把域名样站点当未知全部删除
+        # → 下次采集又被重建」的死循环（即重启后 t.pthome.org 仍出现的现象）。
+        if not self._site_domain_map:
+            return
         try:
             with self._db_lock:
                 sites = [r[0] for r in self._db.execute(
@@ -1442,7 +1507,7 @@ class DownloaderTraffic(_PluginBase):
         with self._db_lock:
             rows = self._db.execute(
                 "SELECT date, year, month, downloader, uploaded, downloaded "
-                "FROM traffic_records WHERE site=?"
+                "FROM traffic_records WHERE site=?", (old,)
             ).fetchall()
             self._db.execute("DELETE FROM traffic_records WHERE site=?", (old,))
             for r in rows:
