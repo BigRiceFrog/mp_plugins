@@ -217,7 +217,7 @@ class DownloaderTraffic(_PluginBase):
 
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.6.4"
+    plugin_version = "1.6.5"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -236,7 +236,7 @@ class DownloaderTraffic(_PluginBase):
     _recovery_speed_kb: int = 0          # 月初恢复到的上传限速（KB/s），0 = 完全放开不限速
     _recovery_download_kb: int = 0       # 月初恢复到的下载限速（KB/s），0 = 完全放开不限速
     _recovery_cron: str = "30 0 1 * *"   # 月初恢复触发时间（Cron，默认每月1号00:30）
-    _retention_days: int = 90            # 历史数据保留天数（天），0 = 不自动清理
+    _retention_days: int = 0             # 历史数据保留天数（天），0 = 不自动清理（默认，保留全历史）
     _db: Optional[sqlite3.Connection] = None
     _db_lock: Optional[threading.RLock] = None
     _downloader_helper: Optional[DownloaderHelper] = None
@@ -280,10 +280,13 @@ class DownloaderTraffic(_PluginBase):
         except (ValueError, TypeError):
             self._recovery_download_kb = 0
         self._recovery_cron = str(config.get("recovery_cron") or "30 0 1 * *")
+        # 默认 0 = 不自动清理（保留全历史）。
+        # 注意：0 是合法值，这里不能用 `or 90` 兜底，否则用户填的 0 会被悄悄改成 90。
+        _raw_retention = config.get("retention_days")
         try:
-            self._retention_days = int(config.get("retention_days") or 90)
+            self._retention_days = 0 if _raw_retention in (None, "") else int(_raw_retention)
         except (ValueError, TypeError):
-            self._retention_days = 90
+            self._retention_days = 0
         self._site_domain_map = _parse_site_domain_map(config.get("site_domain_map") or "")
         self.__init_db()
         self._cleanup_bad_site_rows()
@@ -504,8 +507,8 @@ class DownloaderTraffic(_PluginBase):
                                     "model": "retention_days",
                                     "label": "历史数据保留天数 (天)",
                                     "type": "number",
-                                    "placeholder": "90",
-                                    "hint": "每次采集时自动删除超过该天数的历史记录（0=不自动清理）；建议保留 90~180 天"
+                                    "placeholder": "0",
+                                    "hint": "0=不自动清理，保留全历史（默认）；填 >0 则每次采集自动删除超过该天数的记录，如 90 只保留最近 90 天"
                                 }
                             }]
                         },
@@ -536,7 +539,7 @@ class DownloaderTraffic(_PluginBase):
             "recovery_speed_kb": 0,
             "recovery_download_kb": 0,
             "recovery_cron": "30 0 1 * *",
-            "retention_days": 90,
+            "retention_days": 0,
             "site_domain_map": ""
         }
 

@@ -48,7 +48,7 @@ const local = ref({
   recovery_speed_kb: 0,
   recovery_download_kb: 0,
   recovery_cron: '30 0 1 * *',
-  retention_days: 90,
+  retention_days: 0,
   site_domain_map: '',
 })
 
@@ -164,7 +164,7 @@ onMounted(async () => {
     recovery_speed_kb: c.recovery_speed_kb || 0,
     recovery_download_kb: c.recovery_download_kb || 0,
     recovery_cron: c.recovery_cron || '30 0 1 * *',
-    retention_days: c.retention_days ?? 90,
+    retention_days: c.retention_days ?? 0,
     site_domain_map: c.site_domain_map || '',
   }
 
@@ -323,10 +323,10 @@ function save() {
         v-model.number="local.retention_days"
         label="历史数据保留天数 (天)"
         type="number"
-        placeholder="90"
+        placeholder="0"
         class="mt-3"
         variant="outlined"
-        hint="每次采集自动删除超过该天数的历史记录；0=不自动清理。建议 90~180 天"
+        hint="0=不自动清理，保留全历史（默认，详情页「历史总计」饼图才有意义）；填 >0 则每次采集自动删除超过该天数的记录，如 90 只保留最近 90 天"
         persistent-hint
       />
       <VTextarea

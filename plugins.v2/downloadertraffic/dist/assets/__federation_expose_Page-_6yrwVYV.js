@@ -30,7 +30,7 @@ const _hoisted_16$2 = {
   key: 2,
   class: "dt-cal-body"
 };
-const _hoisted_17$1 = { class: "dt-m-grid" };
+const _hoisted_17$2 = { class: "dt-m-grid" };
 const _hoisted_18$1 = ["onClick"];
 const _hoisted_19$1 = { class: "dt-cal-foot" };
 
@@ -278,7 +278,7 @@ return (_ctx, _cache) => {
                   ])
                 ]))
               : (_openBlock$2(), _createElementBlock$2("div", _hoisted_16$2, [
-                  _createElementVNode$2("div", _hoisted_17$1, [
+                  _createElementVNode$2("div", _hoisted_17$2, [
                     (_openBlock$2(true), _createElementBlock$2(_Fragment$2, null, _renderList$2(yearGrid.value, (y) => {
                       return (_openBlock$2(), _createElementBlock$2("button", {
                         key: y,
@@ -354,6 +354,10 @@ const _hoisted_13$1 = { class: "pc-legend" };
 const _hoisted_14$1 = ["title"];
 const _hoisted_15$1 = { class: "pc-val" };
 const _hoisted_16$1 = { class: "pc-pct" };
+const _hoisted_17$1 = {
+  key: 0,
+  class: "pc-more"
+};
 
 const {computed: computed$1,ref: ref$1,onUnmounted} = await importShared('vue');
 
@@ -364,6 +368,10 @@ const {computed: computed$1,ref: ref$1,onUnmounted} = await importShared('vue');
 // - 鼠标悬停 / 手指点按扇区显示 tooltip（站点名 + 数据量）
 const SIZE = 260;
 const R = 118;
+
+// 窄屏图例固定只露 10 行（超出可上下滑动），避免站点多时每张饼图被拉得很高。
+// 注意：改这个数字要同步改下面 .pc-narrow .pc-legend 的 max-height。
+const LEGEND_MAX_ROWS = 10;
 
 
 const _sfc_main$1 = {
@@ -566,14 +574,17 @@ return (_ctx, _cache) => {
                 _createElementVNode$1("span", _hoisted_16$1, _toDisplayString$1(pct(s.value).toFixed(1)) + "%", 1)
               ]))
             }), 128))
-          ])
+          ]),
+          (__props.narrow && sorted.value.length > LEGEND_MAX_ROWS)
+            ? (_openBlock$1(), _createElementBlock$1("div", _hoisted_17$1, " 共 " + _toDisplayString$1(sorted.value.length) + " 个站点，仅显示前 " + _toDisplayString$1(LEGEND_MAX_ROWS) + " 个，上下滑动查看 ", 1))
+            : _createCommentVNode$1("", true)
         ]))
   ], 2))
 }
 }
 
 };
-const PieChart = /*#__PURE__*/_export_sfc(_sfc_main$1, [['__scopeId',"data-v-2a7535e6"]]);
+const PieChart = /*#__PURE__*/_export_sfc(_sfc_main$1, [['__scopeId',"data-v-083544d0"]]);
 
 const {unref:_unref,createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,normalizeClass:_normalizeClass,renderList:_renderList,Fragment:_Fragment,createBlock:_createBlock} = await importShared('vue');
 

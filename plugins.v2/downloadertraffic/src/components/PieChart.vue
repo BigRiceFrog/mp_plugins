@@ -27,6 +27,10 @@ const CX = SIZE / 2
 const CY = SIZE / 2
 const R = 118
 
+// 窄屏图例固定只露 10 行（超出可上下滑动），避免站点多时每张饼图被拉得很高。
+// 注意：改这个数字要同步改下面 .pc-narrow .pc-legend 的 max-height。
+const LEGEND_MAX_ROWS = 10
+
 const sorted = computed(() => {
   return props.items
     .map((it) => ({ label: String(it.label || ''), value: Number(it.value || 0) }))
@@ -175,6 +179,9 @@ onUnmounted(() => { clearTimeout(hideTimer) })
           <span class="pc-pct">{{ pct(s.value).toFixed(1) }}%</span>
         </div>
       </div>
+      <div v-if="narrow && sorted.length > LEGEND_MAX_ROWS" class="pc-more">
+        共 {{ sorted.length }} 个站点，仅显示前 {{ LEGEND_MAX_ROWS }} 个，上下滑动查看
+      </div>
     </div>
   </div>
 </template>
@@ -240,14 +247,31 @@ onUnmounted(() => { clearTimeout(hideTimer) })
   .pc-legend { max-height: 220px; }
 }
 
-/* 窄屏：饼图缩小并居中，图例整行铺开且不再裁切，站点再多也全部可见 */
+/* 窄屏：饼图缩小并居中，图例整行铺开；
+   高度固定成 10 行（与脚本里的 LEGEND_MAX_ROWS 对应），更多站点靠滑动查看 */
 .pc-narrow .pc-svg-wrap { flex: 1 1 160px; max-width: 224px; }
 .pc-narrow .pc-legend {
   flex: 1 1 100%;
-  max-height: none;
-  overflow: visible;
   gap: 1px;
+  max-height: calc(10 * 13px * 1.55 + 10px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  padding-right: 2px;
+}
+.pc-narrow .pc-legend::-webkit-scrollbar { width: 4px; }
+.pc-narrow .pc-legend::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.4);
+  border-radius: 2px;
 }
 .pc-narrow .pc-legend-item { font-size: 13px; line-height: 1.55; }
+.pc-narrow .pc-more {
+  flex: 1 1 100%;
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.55;
+  text-align: center;
+}
 .pc-narrow .pc-head { padding: 0 0 6px; }
 </style>
