@@ -217,7 +217,7 @@ class DownloaderTraffic(_PluginBase):
 
     # ----------------------- 插件元信息 -----------------------
     plugin_name = "下载器流量统计"
-    plugin_version = "1.6.3"
+    plugin_version = "1.6.4"
     # icon 可换成你自己的图片 URL；这里复用官方仓库的通用图标占位
     plugin_icon = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Plugins/main/icons/statistic.png"
     plugin_desc = "按年/月/日统计 qBittorrent、Transmission 的上传/下载流量，并细分到每个 PT 站点"
@@ -632,7 +632,7 @@ class DownloaderTraffic(_PluginBase):
                 "methods": ["GET"],
                 "auth": "bear",
                 "summary": "查询流量统计",
-                "description": "按 年/月/日 查询上传/下载流量，可按站点、下载器过滤",
+                "description": "按 年/月/日/全历史 查询上传/下载流量，可按站点、下载器过滤；period=all 为全历史累计",
             },
             {
                 "path": "/trend",
@@ -746,11 +746,17 @@ class DownloaderTraffic(_PluginBase):
         site = params.get("site")
         downloader = params.get("downloader")
 
-        if period == "month":
+        if period == "all":
+            # period=all：不加任何时间过滤 = 全历史累计（详情页「历史总计上传」饼图用）
+            sql = ("SELECT site, downloader, SUM(uploaded), SUM(downloaded) "
+                   "FROM traffic_records WHERE 1=1")
+            value = "all"
+            args: List[Any] = []
+        elif period == "month":
             sql = ("SELECT site, downloader, SUM(uploaded), SUM(downloaded) "
                    "FROM traffic_records WHERE month=?")
             value = value or datetime.now().strftime("%Y-%m")
-            args: List[Any] = [value]
+            args = [value]
         elif period == "year":
             sql = ("SELECT site, downloader, SUM(uploaded), SUM(downloaded) "
                    "FROM traffic_records WHERE year=?")
@@ -790,7 +796,9 @@ class DownloaderTraffic(_PluginBase):
             tot_sql = ("SELECT COALESCE(SUM(uploaded),0), COALESCE(SUM(downloaded),0) "
                        "FROM traffic_records WHERE site='GLOBAL'")
             tot_args: List[Any] = []
-            if period == "month":
+            if period == "all":
+                pass  # 全历史：同样不加时间过滤
+            elif period == "month":
                 tot_sql += " AND month=?"
                 tot_args.append(value)
             elif period == "year":
@@ -944,6 +952,7 @@ class DownloaderTraffic(_PluginBase):
                         "<code>GET /plugin/DownloaderTraffic/records?period=day&amp;value=2026-08-18</code><br/>"
                         "<code>GET /plugin/DownloaderTraffic/records?period=month&amp;value=2026-08</code><br/>"
                         "<code>GET /plugin/DownloaderTraffic/records?period=year&amp;value=2026</code><br/>"
+                        "<code>GET /plugin/DownloaderTraffic/records?period=all</code>（全历史累计）<br/>"
                         "<code>GET /plugin/DownloaderTraffic/trend?period=month&amp;value=2026-08</code><br/>"
                         "<code>GET /plugin/DownloaderTraffic/downloaders</code><br/><br/>"
                         "调试与控制接口：<br/>"

@@ -1,0 +1,48 @@
+
+.dt-config[data-v-854e9fa5] { width: 100%; max-width: 100%; box-sizing: border-box;
+}
+.dt-header[data-v-854e9fa5] { width: 100%;
+}
+.dt-header-row[data-v-854e9fa5] {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.dt-title[data-v-854e9fa5] {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dt-header-actions[data-v-854e9fa5] { display: flex; align-items: center; gap: 4px; flex: 0 0 auto;
+}
+.dt-body[data-v-854e9fa5] {
+  padding: 16px;
+  max-width: 560px;
+  box-sizing: border-box;
+}
+
+/* 操作按钮：窄屏两列铺满，不再一路挤成一行 */
+.dt-actions[data-v-854e9fa5] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.dt-narrow .dt-header-row[data-v-854e9fa5] { padding: 8px 10px;
+}
+.dt-narrow .dt-title[data-v-854e9fa5] { font-size: 1rem;
+}
+.dt-narrow .dt-body[data-v-854e9fa5] {
+  /* 底部留白：最后一项的长提示（站点域名映射）在手机上不会被裁掉 */
+  padding: 12px 10px calc(24px + env(safe-area-inset-bottom, 0px));
+  max-width: none;
+}
+.dt-narrow .dt-actions[data-v-854e9fa5] { gap: 8px;
+}
+.dt-narrow .dt-action-btn[data-v-854e9fa5] { flex: 1 1 calc(50% - 4px); min-width: 0;
+}

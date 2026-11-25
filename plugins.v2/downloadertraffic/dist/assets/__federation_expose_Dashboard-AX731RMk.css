@@ -1,0 +1,51 @@
+
+/* 仪表盘卡片在手机上可能只有 150~300px 宽：整块按容器宽度伸缩，
+   数字用 tabular-nums 且允许换行，不会被卡片裁掉 */
+.dt-dash[data-v-4bdb69b2] {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 12px 12px;
+  box-sizing: border-box;
+}
+.dt-dash-title[data-v-4bdb69b2] {
+  font-size: 12px;
+  opacity: 0.7;
+  margin-bottom: 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dt-dash-rows[data-v-4bdb69b2] { display: flex; flex-direction: column; gap: 4px; min-width: 0;
+}
+.dt-dash-row[data-v-4bdb69b2] {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.dt-dash-label[data-v-4bdb69b2] {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+.dt-dash-val[data-v-4bdb69b2] {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.dt-up[data-v-4bdb69b2] { color: #4caf50;
+}
+.dt-down[data-v-4bdb69b2] { color: #2196f3;
+}
+@media (max-width: 360px) {
+.dt-dash[data-v-4bdb69b2] { padding: 6px 8px 10px;
+}
+.dt-dash-row[data-v-4bdb69b2] { font-size: 13px;
+}
+}

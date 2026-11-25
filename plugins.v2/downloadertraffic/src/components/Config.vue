@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useNarrow } from '../composables/useNarrow'
 
 const props = defineProps({
   api: {
@@ -16,6 +17,9 @@ const props = defineProps({
   },
 })
 const emit = defineEmits(['save', 'close'])
+
+// 窄屏（手机 / 桌面窄弹窗）判定
+const { target: rootEl, narrow } = useNarrow(640)
 
 // 后端 API 路由以插件类名 DownloaderTraffic 为前缀注册
 const pid = computed(() => {
@@ -186,36 +190,42 @@ function save() {
 </script>
 
 <template>
-  <div class="dt-config">
-    <VToolbar density="comfortable" color="transparent">
-      <div class="text-h6 ms-3">下载器流量统计 · 配置</div>
-      <VSpacer />
-      <VBtn icon="mdi-content-save" variant="text" color="primary" @click="save" />
-      <VBtn icon="mdi-close" variant="text" @click="emit('close')" />
-    </VToolbar>
+  <div ref="rootEl" class="dt-config" :class="{ 'dt-narrow': narrow }">
+    <div class="dt-header">
+      <div class="dt-header-row">
+        <div class="dt-title">下载器流量统计 · 配置</div>
+        <div class="dt-header-actions">
+          <VBtn icon="mdi-content-save" variant="text" color="primary" aria-label="保存" @click="save" />
+          <VBtn icon="mdi-close" variant="text" aria-label="关闭" @click="emit('close')" />
+        </div>
+      </div>
+    </div>
     <VDivider />
-    <div class="pa-4" style="max-width: 560px">
+    <div class="dt-body">
       <div v-if="actionMsg" class="mb-3">
         <VAlert density="compact" variant="tonal" :type="actionMsg.includes('失败') ? 'error' : 'success'">
           {{ actionMsg }}
         </VAlert>
       </div>
-      <div class="d-flex ga-2 mb-3 flex-wrap">
+      <div class="dt-actions">
         <VBtn
           color="primary"
           variant="tonal"
+          class="dt-action-btn"
           :loading="collectBusy"
           @click="doCollect"
         >立即采集流量</VBtn>
         <VBtn
           color="error"
           variant="tonal"
+          class="dt-action-btn"
           :loading="limitBusy"
           @click="doTestLimit"
         >测试限速</VBtn>
         <VBtn
           color="success"
           variant="tonal"
+          class="dt-action-btn"
           :loading="resetBusy"
           @click="doReset"
         >测试月初恢复</VBtn>
@@ -223,6 +233,7 @@ function save() {
           color="error"
           variant="text"
           density="comfortable"
+          class="dt-action-btn"
           @click="openClearDialog"
         >清空历史数据</VBtn>
       </div>
@@ -330,7 +341,11 @@ function save() {
       />
     </div>
 
-    <VDialog v-model="clearDialog" max-width="440" persistent>
+    <VDialog
+      v-model="clearDialog"
+      :max-width="narrow ? 'calc(100vw - 32px)' : 440"
+      persistent
+    >
       <VCard>
         <VCardTitle class="text-error">清空全部历史数据？</VCardTitle>
         <VCardText>
@@ -361,3 +376,48 @@ function save() {
     </VDialog>
   </div>
 </template>
+
+<style scoped>
+.dt-config { width: 100%; max-width: 100%; box-sizing: border-box; }
+
+.dt-header { width: 100%; }
+.dt-header-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+}
+.dt-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dt-header-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+
+.dt-body {
+  padding: 16px;
+  max-width: 560px;
+  box-sizing: border-box;
+}
+
+/* 操作按钮：窄屏两列铺满，不再一路挤成一行 */
+.dt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.dt-narrow .dt-header-row { padding: 8px 10px; }
+.dt-narrow .dt-title { font-size: 1rem; }
+.dt-narrow .dt-body {
+  /* 底部留白：最后一项的长提示（站点域名映射）在手机上不会被裁掉 */
+  padding: 12px 10px calc(24px + env(safe-area-inset-bottom, 0px));
+  max-width: none;
+}
+.dt-narrow .dt-actions { gap: 8px; }
+.dt-narrow .dt-action-btn { flex: 1 1 calc(50% - 4px); min-width: 0; }
+</style>

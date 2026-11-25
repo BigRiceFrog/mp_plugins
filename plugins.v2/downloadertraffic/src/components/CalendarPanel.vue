@@ -134,7 +134,7 @@ function pickYear(y) {
     v-model="menuOpen"
     location="bottom start"
     :close-on-content-click="false"
-    min-width="320"
+    :min-width="0"
   >
     <template #activator="{ props: menuProps }">
       <VTextField
@@ -142,7 +142,7 @@ function pickYear(y) {
         readonly
         density="compact"
         hide-details
-        style="max-width: 260px; min-width: 210px"
+        class="dt-cal-field"
         variant="outlined"
         :placeholder="valuePlaceholder"
         append-inner-icon="mdi-calendar"
@@ -168,13 +168,13 @@ function pickYear(y) {
           </template>
         </div>
       </div>
-      <div class="dt-cal-toolbar d-flex align-center justify-space-between pa-2">
+      <div class="dt-cal-toolbar">
         <VBtn variant="text" icon="mdi-chevron-left" size="small" @click="headerLeft" />
         <div class="dt-cal-toolbar-title">{{ pickerHeaderTitle }}</div>
         <VBtn variant="text" icon="mdi-chevron-right" size="small" @click="headerRight" />
       </div>
 
-      <div v-if="mode === 'day'" class="px-2 pb-2">
+      <div v-if="mode === 'day'" class="dt-cal-body">
         <div class="dt-wday-row">
           <div v-for="(w, i) in WDAYS_ZH" :key="i" class="dt-wday">{{ w }}</div>
         </div>
@@ -194,7 +194,7 @@ function pickYear(y) {
         </div>
       </div>
 
-      <div v-else-if="mode === 'month'" class="px-3 pb-3">
+      <div v-else-if="mode === 'month'" class="dt-cal-body">
         <div class="dt-m-grid">
           <button
             v-for="(name, i) in MONTHS_ZH"
@@ -207,7 +207,7 @@ function pickYear(y) {
         </div>
       </div>
 
-      <div v-else class="px-3 pb-3">
+      <div v-else class="dt-cal-body">
         <div class="dt-m-grid">
           <button
             v-for="y in yearGrid"
@@ -220,7 +220,7 @@ function pickYear(y) {
         </div>
       </div>
 
-      <div class="d-flex justify-end ga-1 px-2 pb-2">
+      <div class="dt-cal-foot">
         <VBtn size="small" variant="text" @click="goToday">今天</VBtn>
         <VBtn size="small" variant="text" @click="menuOpen = false">关闭</VBtn>
       </div>
@@ -229,15 +229,33 @@ function pickYear(y) {
 </template>
 
 <style scoped>
-.dt-calendar-card { min-width: 300px; width: 312px; padding: 0; overflow: hidden; }
+/* 输入框占满父容器（父容器决定宽度）：手机窄栏里不会撑出 260px 固定宽度 */
+.dt-cal-field { width: 100%; max-width: 260px; min-width: 0; }
+
+/* 弹层宽度跟随视口，避免 312px 固定宽在小屏上溢出 */
+.dt-calendar-card {
+  width: min(312px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
+  padding: 0;
+  overflow: hidden;
+}
 .dt-cal-head {
   background: linear-gradient(135deg, #6366f1, #7c3aed);
   color: #fff;
   padding: 14px 16px 12px;
 }
 .dt-cal-head-label { font-size: 12px; opacity: 0.9; letter-spacing: 0.4px; }
-.dt-cal-head-value { font-size: 22px; font-weight: 600; margin-top: 4px; line-height: 1.2; }
+.dt-cal-head-value { font-size: clamp(18px, 5vw, 22px); font-weight: 600; margin-top: 4px; line-height: 1.2; }
+.dt-cal-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 4px 8px;
+}
 .dt-cal-toolbar-title { font-size: 14px; font-weight: 600; color: rgb(var(--v-theme-on-surface, 33 33 33)); }
+.dt-cal-body { padding: 0 8px 8px; }
+.dt-cal-foot { display: flex; justify-content: flex-end; gap: 4px; padding: 0 8px 8px; }
 
 .dt-wday-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; padding: 2px 0 4px; }
 .dt-wday {
@@ -247,15 +265,20 @@ function pickYear(y) {
 }
 .dt-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
 .dt-day {
-  all: unset; cursor: pointer;
-  height: 32px; border-radius: 50%;
+  all: unset;
+  cursor: pointer;
+  box-sizing: border-box;
+  height: 34px;
+  border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 13px; color: inherit;
   transition: background 0.15s ease, color 0.15s ease, transform 0.05s ease;
   border: 1px solid transparent;
+  -webkit-tap-highlight-color: transparent;
 }
 .dt-day:hover { background: rgb(var(--v-theme-primary, 99 102 241) / 0.08); }
 .dt-day:active { transform: scale(0.96); }
+.dt-day:focus-visible { outline: 2px solid rgb(var(--v-theme-primary, 99 102 241)); outline-offset: 1px; }
 .dt-day-out { color: rgba(128, 128, 128, 0.55); }
 .dt-day-today {
   background: rgb(var(--v-theme-primary, 99 102 241) / 0.08);
@@ -271,16 +294,21 @@ function pickYear(y) {
 
 .dt-m-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px; }
 .dt-m-btn {
-  all: unset; cursor: pointer;
-  height: 38px; border-radius: 10px;
+  all: unset;
+  cursor: pointer;
+  box-sizing: border-box;
+  height: 40px;
+  border-radius: 10px;
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 13px; color: inherit;
   border: 1px solid rgb(128 128 128 / 0.18);
   background: transparent;
   transition: background 0.15s ease, color 0.15s ease, transform 0.05s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 .dt-m-btn:hover { background: rgb(var(--v-theme-primary, 99 102 241) / 0.08); }
 .dt-m-btn:active { transform: scale(0.96); }
+.dt-m-btn:focus-visible { outline: 2px solid rgb(var(--v-theme-primary, 99 102 241)); outline-offset: 1px; }
 .dt-m-btn.dt-selected {
   background: rgb(var(--v-theme-primary, 99 102 241));
   color: #fff;

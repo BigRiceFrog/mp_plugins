@@ -1,14 +1,8 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
+import { _ as _export_sfc } from './_plugin-vue_export-helper-pcqpp-6-.js';
+import { u as useNarrow } from './useNarrow-DoB6roQs.js';
 
-const _export_sfc = (sfc, props) => {
-  const target = sfc.__vccOpts || sfc;
-  for (const [key, val] of props) {
-    target[key] = val;
-  }
-  return target;
-};
-
-const {resolveComponent:_resolveComponent$1,mergeProps:_mergeProps,createVNode:_createVNode$1,openBlock:_openBlock$2,createElementBlock:_createElementBlock$2,createCommentVNode:_createCommentVNode$2,createElementVNode:_createElementVNode$2,toDisplayString:_toDisplayString$2,unref:_unref,createTextVNode:_createTextVNode$1,Fragment:_Fragment$2,renderList:_renderList$2,normalizeClass:_normalizeClass,withCtx:_withCtx$1,createBlock:_createBlock} = await importShared('vue');
+const {resolveComponent:_resolveComponent$1,mergeProps:_mergeProps,createVNode:_createVNode$1,openBlock:_openBlock$2,createElementBlock:_createElementBlock$2,createCommentVNode:_createCommentVNode$2,createElementVNode:_createElementVNode$2,toDisplayString:_toDisplayString$2,unref:_unref$1,createTextVNode:_createTextVNode$1,Fragment:_Fragment$2,renderList:_renderList$2,normalizeClass:_normalizeClass$2,withCtx:_withCtx$1,createBlock:_createBlock$1} = await importShared('vue');
 
 
 const _hoisted_1$2 = { class: "dt-cal-head" };
@@ -17,28 +11,28 @@ const _hoisted_3$2 = { key: 0 };
 const _hoisted_4$2 = { key: 1 };
 const _hoisted_5$2 = { key: 2 };
 const _hoisted_6$2 = { class: "dt-cal-head-value" };
-const _hoisted_7$2 = { class: "dt-cal-toolbar d-flex align-center justify-space-between pa-2" };
+const _hoisted_7$2 = { class: "dt-cal-toolbar" };
 const _hoisted_8$2 = { class: "dt-cal-toolbar-title" };
 const _hoisted_9$2 = {
   key: 0,
-  class: "px-2 pb-2"
+  class: "dt-cal-body"
 };
 const _hoisted_10$2 = { class: "dt-wday-row" };
 const _hoisted_11$2 = { class: "dt-grid" };
 const _hoisted_12$2 = ["onClick"];
 const _hoisted_13$2 = {
   key: 1,
-  class: "px-3 pb-3"
+  class: "dt-cal-body"
 };
 const _hoisted_14$2 = { class: "dt-m-grid" };
 const _hoisted_15$2 = ["onClick"];
 const _hoisted_16$2 = {
   key: 2,
-  class: "px-3 pb-3"
+  class: "dt-cal-body"
 };
-const _hoisted_17$2 = { class: "dt-m-grid" };
+const _hoisted_17$1 = { class: "dt-m-grid" };
 const _hoisted_18$1 = ["onClick"];
-const _hoisted_19$1 = { class: "d-flex justify-end ga-1 px-2 pb-2" };
+const _hoisted_19$1 = { class: "dt-cal-foot" };
 
 const {ref: ref$2,computed: computed$2,watch: watch$1} = await importShared('vue');
 
@@ -183,12 +177,12 @@ return (_ctx, _cache) => {
   const _component_VCard = _resolveComponent$1("VCard");
   const _component_VMenu = _resolveComponent$1("VMenu");
 
-  return (_openBlock$2(), _createBlock(_component_VMenu, {
+  return (_openBlock$2(), _createBlock$1(_component_VMenu, {
     modelValue: menuOpen.value,
     "onUpdate:modelValue": _cache[1] || (_cache[1] = $event => ((menuOpen).value = $event)),
     location: "bottom start",
     "close-on-content-click": false,
-    "min-width": "320"
+    "min-width": 0
   }, {
     activator: _withCtx$1(({ props: menuProps }) => [
       _createVNode$1(_component_VTextField, _mergeProps({
@@ -196,7 +190,7 @@ return (_ctx, _cache) => {
         readonly: "",
         density: "compact",
         "hide-details": "",
-        style: {"max-width":"260px","min-width":"210px"},
+        class: "dt-cal-field",
         variant: "outlined",
         placeholder: valuePlaceholder.value,
         "append-inner-icon": "mdi-calendar"
@@ -219,7 +213,7 @@ return (_ctx, _cache) => {
             _createElementVNode$2("div", _hoisted_6$2, [
               (__props.mode === 'day')
                 ? (_openBlock$2(), _createElementBlock$2(_Fragment$2, { key: 0 }, [
-                    _createTextVNode$1(_toDisplayString$2(selYear.value) + " 年 " + _toDisplayString$2(selMonth.value) + " 月 " + _toDisplayString$2(__props.modelValue?.slice(-2)?.replace(/^-/, '') || _unref(today).getDate()) + " 日 ", 1)
+                    _createTextVNode$1(_toDisplayString$2(selYear.value) + " 年 " + _toDisplayString$2(selMonth.value) + " 月 " + _toDisplayString$2(__props.modelValue?.slice(-2)?.replace(/^-/, '') || _unref$1(today).getDate()) + " 日 ", 1)
                   ], 64))
                 : (__props.mode === 'month')
                   ? (_openBlock$2(), _createElementBlock$2(_Fragment$2, { key: 1 }, [
@@ -260,7 +254,7 @@ return (_ctx, _cache) => {
                     return (_openBlock$2(), _createElementBlock$2("button", {
                       key: idx,
                       type: "button",
-                      class: _normalizeClass(["dt-day", {
+                      class: _normalizeClass$2(["dt-day", {
               'dt-day-out': !g.inMonth,
               'dt-day-today': isToday(g),
               'dt-day-selected': isSelectedDay(g),
@@ -277,19 +271,19 @@ return (_ctx, _cache) => {
                       return _createElementVNode$2("button", {
                         key: i,
                         type: "button",
-                        class: _normalizeClass(["dt-m-btn", { 'dt-selected': selMonth.value === i + 1 && Number(String(__props.modelValue).slice(0, 4)) === selYear.value }]),
+                        class: _normalizeClass$2(["dt-m-btn", { 'dt-selected': selMonth.value === i + 1 && Number(String(__props.modelValue).slice(0, 4)) === selYear.value }]),
                         onClick: $event => (pickMonth(i + 1))
                       }, _toDisplayString$2(name), 11, _hoisted_15$2)
                     }), 64))
                   ])
                 ]))
               : (_openBlock$2(), _createElementBlock$2("div", _hoisted_16$2, [
-                  _createElementVNode$2("div", _hoisted_17$2, [
+                  _createElementVNode$2("div", _hoisted_17$1, [
                     (_openBlock$2(true), _createElementBlock$2(_Fragment$2, null, _renderList$2(yearGrid.value, (y) => {
                       return (_openBlock$2(), _createElementBlock$2("button", {
                         key: y,
                         type: "button",
-                        class: _normalizeClass(["dt-m-btn", { 'dt-selected': String(__props.modelValue) === String(y) }]),
+                        class: _normalizeClass$2(["dt-m-btn", { 'dt-selected': String(__props.modelValue) === String(y) }]),
                         onClick: $event => (pickYear(y))
                       }, _toDisplayString$2(y), 11, _hoisted_18$1))
                     }), 128))
@@ -327,48 +321,47 @@ return (_ctx, _cache) => {
 }
 
 };
-const CalendarPanel = /*#__PURE__*/_export_sfc(_sfc_main$2, [['__scopeId',"data-v-5fe7de4e"]]);
+const CalendarPanel = /*#__PURE__*/_export_sfc(_sfc_main$2, [['__scopeId',"data-v-6c3d007b"]]);
 
-const {toDisplayString:_toDisplayString$1,createElementVNode:_createElementVNode$1,openBlock:_openBlock$1,createElementBlock:_createElementBlock$1,createCommentVNode:_createCommentVNode$1,renderList:_renderList$1,Fragment:_Fragment$1,normalizeStyle:_normalizeStyle} = await importShared('vue');
+const {toDisplayString:_toDisplayString$1,createElementVNode:_createElementVNode$1,openBlock:_openBlock$1,createElementBlock:_createElementBlock$1,createCommentVNode:_createCommentVNode$1,renderList:_renderList$1,Fragment:_Fragment$1,normalizeStyle:_normalizeStyle,normalizeClass:_normalizeClass$1} = await importShared('vue');
 
 
-const _hoisted_1$1 = { class: "pc-wrap" };
-const _hoisted_2$1 = { class: "pc-head" };
-const _hoisted_3$1 = { class: "pc-title" };
-const _hoisted_4$1 = {
+const _hoisted_1$1 = { class: "pc-head" };
+const _hoisted_2$1 = { class: "pc-title" };
+const _hoisted_3$1 = {
   key: 0,
   class: "pc-sub"
 };
-const _hoisted_5$1 = {
+const _hoisted_4$1 = {
   key: 1,
   class: "pc-total"
 };
-const _hoisted_6$1 = {
+const _hoisted_5$1 = {
   key: 0,
   class: "pc-empty"
 };
-const _hoisted_7$1 = {
+const _hoisted_6$1 = {
   key: 1,
   class: "pc-body"
 };
-const _hoisted_8$1 = { class: "pc-svg-wrap" };
-const _hoisted_9$1 = ["viewBox"];
-const _hoisted_10$1 = ["d", "fill", "onMousemove"];
-const _hoisted_11$1 = ["x", "y"];
-const _hoisted_12$1 = { class: "pc-tip-name" };
-const _hoisted_13$1 = { class: "pc-tip-val" };
-const _hoisted_14$1 = { class: "pc-legend" };
-const _hoisted_15$1 = ["title"];
-const _hoisted_16$1 = { class: "pc-val" };
-const _hoisted_17$1 = { class: "pc-pct" };
+const _hoisted_7$1 = { class: "pc-svg-wrap" };
+const _hoisted_8$1 = ["viewBox"];
+const _hoisted_9$1 = ["d", "fill", "onPointermove", "onPointerdown"];
+const _hoisted_10$1 = ["x", "y"];
+const _hoisted_11$1 = { class: "pc-tip-name" };
+const _hoisted_12$1 = { class: "pc-tip-val" };
+const _hoisted_13$1 = { class: "pc-legend" };
+const _hoisted_14$1 = ["title"];
+const _hoisted_15$1 = { class: "pc-val" };
+const _hoisted_16$1 = { class: "pc-pct" };
 
-const {computed: computed$1,ref: ref$1} = await importShared('vue');
+const {computed: computed$1,ref: ref$1,onUnmounted} = await importShared('vue');
 
 
 // 纯 SVG 饼图（不依赖第三方图表库）：
 // - items: [{label, value}]，内部按 value 从大到小排序
 // - 只展示 value>0 的站点；图例展示 色块 + 站点名 + 数值 + 占比
-// - 鼠标悬停扇区显示 tooltip（站点名 + 数据量）
+// - 鼠标悬停 / 手指点按扇区显示 tooltip（站点名 + 数据量）
 const SIZE = 260;
 const R = 118;
 
@@ -381,6 +374,8 @@ const _sfc_main$1 = {
   subtitle: { type: String, default: '' },
   emptyText: { type: String, default: '暂无数据' },
   loading: { type: Boolean, default: false },
+  // 窄屏：图例改为整行铺开（不再限高裁切），扇区上的数值隐藏（图例已有），避免小扇区文字互压
+  narrow: { type: Boolean, default: false },
 },
   setup(__props) {
 
@@ -428,8 +423,9 @@ function labelPos(s) {
   const lr = R * 0.62;
   return { x: CX + lr * Math.sin(mid), y: CY - lr * Math.cos(mid) }
 }
-// 扇区角度足够大才在扇区上标数值，避免小扇区文字重叠
+// 扇区角度足够大才在扇区上标数值，避免小扇区文字重叠；窄屏图例已给出数值，直接不标
 function showLabel(s) {
+  if (props.narrow) return false
   return s.a2 - s.a1 > 0.3
 }
 function pct(v) {
@@ -456,10 +452,12 @@ function fmtCompact(n) {
 // ---------- tooltip ----------
 const svgRef = ref$1(null);
 const hover = ref$1(null);
-function onMove(e, s, i) {
+let hideTimer = null;
+function placeTip(e, s, i) {
   const el = svgRef.value;
-  if (!el) return
+  if (!el) return false
   const rect = el.getBoundingClientRect();
+  if (!rect.width || !rect.height) return false
   let x = e.clientX - rect.left;
   let y = e.clientY - rect.top;
   const tipW = 160, tipH = 34;
@@ -474,32 +472,47 @@ function onMove(e, s, i) {
     x: Math.max(4, Math.floor(x)),
     y: Math.max(4, Math.floor(y)),
   };
+  return true
 }
-function onLeave() {
+function onMove(e, s, i) {
+  placeTip(e, s, i);
+}
+// 触摸屏没有 mouseover：点一下扇区就让 tooltip 显示 2 秒，避免手机上完全看不到数值
+function onTap(e, s, i) {
+  if (!placeTip(e, s, i)) return
+  clearTimeout(hideTimer);
+  hideTimer = setTimeout(() => { hover.value = null; }, 2200);
+}
+function onLeave(e) {
+  // 手指离开不立刻隐藏（否则 tap 的 tooltip 一闪而过）
+  if (e && e.pointerType && e.pointerType !== 'mouse') return
   hover.value = null;
 }
+onUnmounted(() => { clearTimeout(hideTimer); });
 
 return (_ctx, _cache) => {
-  return (_openBlock$1(), _createElementBlock$1("div", _hoisted_1$1, [
-    _createElementVNode$1("div", _hoisted_2$1, [
-      _createElementVNode$1("span", _hoisted_3$1, _toDisplayString$1(__props.title), 1),
+  return (_openBlock$1(), _createElementBlock$1("div", {
+    class: _normalizeClass$1(["pc-wrap", { 'pc-narrow': __props.narrow }])
+  }, [
+    _createElementVNode$1("div", _hoisted_1$1, [
+      _createElementVNode$1("span", _hoisted_2$1, _toDisplayString$1(__props.title), 1),
       (__props.subtitle)
-        ? (_openBlock$1(), _createElementBlock$1("span", _hoisted_4$1, _toDisplayString$1(__props.subtitle), 1))
+        ? (_openBlock$1(), _createElementBlock$1("span", _hoisted_3$1, _toDisplayString$1(__props.subtitle), 1))
         : _createCommentVNode$1("", true),
       (total.value > 0)
-        ? (_openBlock$1(), _createElementBlock$1("span", _hoisted_5$1, "共 " + _toDisplayString$1(fmtBytes(total.value)), 1))
+        ? (_openBlock$1(), _createElementBlock$1("span", _hoisted_4$1, "共 " + _toDisplayString$1(fmtBytes(total.value)), 1))
         : _createCommentVNode$1("", true)
     ]),
     (sorted.value.length === 0)
-      ? (_openBlock$1(), _createElementBlock$1("div", _hoisted_6$1, _toDisplayString$1(__props.loading ? '加载中...' : __props.emptyText), 1))
-      : (_openBlock$1(), _createElementBlock$1("div", _hoisted_7$1, [
-          _createElementVNode$1("div", _hoisted_8$1, [
+      ? (_openBlock$1(), _createElementBlock$1("div", _hoisted_5$1, _toDisplayString$1(__props.loading ? '加载中...' : __props.emptyText), 1))
+      : (_openBlock$1(), _createElementBlock$1("div", _hoisted_6$1, [
+          _createElementVNode$1("div", _hoisted_7$1, [
             (_openBlock$1(), _createElementBlock$1("svg", {
               ref_key: "svgRef",
               ref: svgRef,
               viewBox: `0 0 ${SIZE} ${SIZE}`,
               class: "pc-svg",
-              onMouseleave: onLeave
+              onPointerleave: onLeave
             }, [
               (_openBlock$1(true), _createElementBlock$1(_Fragment$1, null, _renderList$1(segments.value, (s, i) => {
                 return (_openBlock$1(), _createElementBlock$1("g", { key: i }, [
@@ -508,8 +521,9 @@ return (_ctx, _cache) => {
                     fill: PALETTE[i % PALETTE.length],
                     stroke: "#fff",
                     "stroke-width": "1.5",
-                    onMousemove: $event => (onMove($event, s, i))
-                  }, null, 40, _hoisted_10$1),
+                    onPointermove: $event => (onMove($event, s, i)),
+                    onPointerdown: $event => (onTap($event, s, i))
+                  }, null, 40, _hoisted_9$1),
                   (showLabel(s))
                     ? (_openBlock$1(), _createElementBlock$1("text", {
                         key: 0,
@@ -518,23 +532,23 @@ return (_ctx, _cache) => {
                         class: "pc-slice-label",
                         "text-anchor": "middle",
                         "dominant-baseline": "middle"
-                      }, _toDisplayString$1(fmtCompact(s.value)), 9, _hoisted_11$1))
+                      }, _toDisplayString$1(fmtCompact(s.value)), 9, _hoisted_10$1))
                     : _createCommentVNode$1("", true)
                 ]))
               }), 128))
-            ], 40, _hoisted_9$1)),
+            ], 40, _hoisted_8$1)),
             (hover.value)
               ? (_openBlock$1(), _createElementBlock$1("div", {
                   key: 0,
                   class: "pc-tip",
                   style: _normalizeStyle({ left: hover.value.x + 'px', top: hover.value.y + 'px', background: hover.value.color })
                 }, [
-                  _createElementVNode$1("span", _hoisted_12$1, _toDisplayString$1(hover.value.label), 1),
-                  _createElementVNode$1("span", _hoisted_13$1, _toDisplayString$1(fmtBytes(hover.value.value)), 1)
+                  _createElementVNode$1("span", _hoisted_11$1, _toDisplayString$1(hover.value.label), 1),
+                  _createElementVNode$1("span", _hoisted_12$1, _toDisplayString$1(fmtBytes(hover.value.value)), 1)
                 ], 4))
               : _createCommentVNode$1("", true)
           ]),
-          _createElementVNode$1("div", _hoisted_14$1, [
+          _createElementVNode$1("div", _hoisted_13$1, [
             (_openBlock$1(true), _createElementBlock$1(_Fragment$1, null, _renderList$1(sorted.value, (s, i) => {
               return (_openBlock$1(), _createElementBlock$1("div", {
                 key: i,
@@ -547,61 +561,70 @@ return (_ctx, _cache) => {
                 _createElementVNode$1("span", {
                   class: "pc-name",
                   title: s.label
-                }, _toDisplayString$1(s.label), 9, _hoisted_15$1),
-                _createElementVNode$1("span", _hoisted_16$1, _toDisplayString$1(fmtBytes(s.value)), 1),
-                _createElementVNode$1("span", _hoisted_17$1, _toDisplayString$1(pct(s.value).toFixed(1)) + "%", 1)
+                }, _toDisplayString$1(s.label), 9, _hoisted_14$1),
+                _createElementVNode$1("span", _hoisted_15$1, _toDisplayString$1(fmtBytes(s.value)), 1),
+                _createElementVNode$1("span", _hoisted_16$1, _toDisplayString$1(pct(s.value).toFixed(1)) + "%", 1)
               ]))
             }), 128))
           ])
         ]))
-  ]))
+  ], 2))
 }
 }
 
 };
-const PieChart = /*#__PURE__*/_export_sfc(_sfc_main$1, [['__scopeId',"data-v-fc2ae6d4"]]);
+const PieChart = /*#__PURE__*/_export_sfc(_sfc_main$1, [['__scopeId',"data-v-2a7535e6"]]);
 
-const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,renderList:_renderList,Fragment:_Fragment} = await importShared('vue');
+const {unref:_unref,createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,createTextVNode:_createTextVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,normalizeClass:_normalizeClass,renderList:_renderList,Fragment:_Fragment,createBlock:_createBlock} = await importShared('vue');
 
 
-const _hoisted_1 = { class: "dt-page" };
-const _hoisted_2 = { class: "ms-2" };
-const _hoisted_3 = {
+const _hoisted_1 = { class: "dt-header" };
+const _hoisted_2 = { class: "dt-header-row" };
+const _hoisted_3 = { class: "dt-header-actions" };
+const _hoisted_4 = { class: "dt-date" };
+const _hoisted_5 = { class: "dt-buttons" };
+const _hoisted_6 = {
   key: 0,
-  class: "pa-3"
+  class: "dt-notice"
 };
-const _hoisted_4 = {
+const _hoisted_7 = {
   key: 1,
-  class: "text-error pa-3"
+  class: "text-error dt-notice"
 };
-const _hoisted_5 = { class: "dt-cards" };
-const _hoisted_6 = { class: "text-h6" };
-const _hoisted_7 = { class: "text-h6" };
-const _hoisted_8 = { class: "text-h6" };
-const _hoisted_9 = { class: "dt-pies" };
-const _hoisted_10 = { class: "dt-pie-head" };
-const _hoisted_11 = { class: "dt-pie-head" };
-const _hoisted_12 = {
+const _hoisted_8 = { class: "dt-cards" };
+const _hoisted_9 = { class: "dt-kpi" };
+const _hoisted_10 = { class: "dt-kpi" };
+const _hoisted_11 = { class: "dt-kpi" };
+const _hoisted_12 = { class: "dt-section-body" };
+const _hoisted_13 = { class: "dt-pie-head" };
+const _hoisted_14 = { class: "dt-pie-date" };
+const _hoisted_15 = { class: "dt-pie-head" };
+const _hoisted_16 = { class: "dt-pie-date" };
+const _hoisted_17 = { class: "dt-pie-head" };
+const _hoisted_18 = { class: "dt-pie-date" };
+const _hoisted_19 = { class: "dt-section-body" };
+const _hoisted_20 = {
   key: 0,
-  class: "text-medium-emphasis"
+  class: "dt-rec-list"
 };
-const _hoisted_13 = ["width"];
-const _hoisted_14 = ["x2"];
-const _hoisted_15 = ["y1", "x2", "y2"];
-const _hoisted_16 = {
-  x: 4,
-  y: 16,
-  class: "dt-axis"
+const _hoisted_21 = {
+  key: 0,
+  class: "dt-empty"
 };
-const _hoisted_17 = ["y"];
-const _hoisted_18 = ["points"];
-const _hoisted_19 = ["points"];
-const _hoisted_20 = ["x", "y"];
-const _hoisted_21 = { style: {"color":"#4caf50"} };
-const _hoisted_22 = { style: {"color":"#2196f3"} };
+const _hoisted_22 = { class: "dt-rec-main" };
+const _hoisted_23 = { class: "dt-rec-site" };
+const _hoisted_24 = { class: "dt-rec-dl" };
+const _hoisted_25 = { class: "dt-rec-nums" };
+const _hoisted_26 = { class: "dt-up" };
+const _hoisted_27 = { class: "dt-down" };
+const _hoisted_28 = {
+  key: 1,
+  class: "dt-rec-more"
+};
+const _hoisted_29 = { style: {"color":"#4caf50"} };
+const _hoisted_30 = { style: {"color":"#2196f3"} };
 
-const {ref,computed,onMounted,onUnmounted,watch,nextTick} = await importShared('vue');
-const lineH = 220, linePadL = 48, linePadB = 28;
+const {ref,computed,onMounted,watch,nextTick} = await importShared('vue');
 
 const _sfc_main = {
   __name: 'Page',
@@ -624,6 +647,14 @@ const _sfc_main = {
 
 const props = __props;
 const emit = __emit;
+
+// 窄屏（手机 / 桌面窄弹窗）判定：按组件自身宽度，而不是视口宽度
+const { target: rootEl, narrow, width: rootWidth } = useNarrow(640);
+// 超窄（≤380px 容器）：日期框换到独占一行，避免「2026 年 11 月」被截断
+const tiny = computed(() => rootWidth.value > 0 && rootWidth.value < 380);
+// 够宽（≥900px）：饼图排成 2×2，否则单列（饼图 + 图例在窄卡片里上下排更易读）
+const roomy = computed(() => rootWidth.value >= 900);
+
 const period = ref('month');
 const value = ref('');
 const loading = ref(false);
@@ -631,7 +662,6 @@ const error = ref('');
 const records = ref([]);
 const totalUp = ref(0);
 const totalDown = ref(0);
-const trend = ref([]);
 // 后端 API 路由由 MoviePilot 以「插件类名 DownloaderTraffic」为前缀注册；
 // 这里固定使用类名，兼容宿主传入小写文件夹名 / 未传 pluginId 的情况。
 const pid = computed(() => {
@@ -701,16 +731,11 @@ async function load() {
   if (!value.value) value.value = defaultValue();
   try {
     const q = new URLSearchParams({ period: period.value, value: value.value });
-    const [r1, r2] = await Promise.all([
-      props.api.get(`${base.value}/records?${q.toString()}`),
-      props.api.get(`${base.value}/trend?${q.toString()}`),
-    ]);
+    const r1 = await props.api.get(`${base.value}/records?${q.toString()}`);
     const rec = unwrap(r1) || {};
-    const tr = unwrap(r2) || {};
     records.value = rec.data || [];
     totalUp.value = rec.total_uploaded || 0;
     totalDown.value = rec.total_downloaded || 0;
-    trend.value = tr.data || [];
   } catch (e) {
     error.value = e?.message || '加载失败';
   } finally {
@@ -718,15 +743,14 @@ async function load() {
   }
 }
 onMounted(() => {
-  pieMonth.value = defaultMonth();
   pieDay.value = defaultDay();
+  pieMonth.value = defaultMonth();
+  pieYear.value = defaultYear();
   load();
-  loadMonthPie();
   loadDayPie();
-  observeTrendWidth();
-});
-onUnmounted(() => {
-  if (trendRO) trendRO.disconnect();
+  loadMonthPie();
+  loadYearPie();
+  loadAllPie();
 });
 watch(period, () => {
   value.value = defaultValue();
@@ -734,22 +758,30 @@ watch(period, () => {
 });
 
 // ============================================================
-// 上传流量饼图：左=按月（默认当前月），右=按日（默认今日），仅统计上传
+// 上传流量饼图：今日 / 本月 / 今年 / 历史总计，四张同款饼图，仅统计上传
 // ============================================================
-const pieMonth = ref('');
 const pieDay = ref('');
-const monthPie = ref([]); // [{label, value}]
-const dayPie = ref([]);
-const monthPieLoading = ref(false);
+const pieMonth = ref('');
+const pieYear = ref('');
+const dayPie = ref([]); // [{label, value}]
+const monthPie = ref([]);
+const yearPie = ref([]);
+const allPie = ref([]);
 const dayPieLoading = ref(false);
+const monthPieLoading = ref(false);
+const yearPieLoading = ref(false);
+const allPieLoading = ref(false);
 
+function defaultDay() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
 function defaultMonth() {
   const d = new Date();
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`
 }
-function defaultDay() {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+function defaultYear() {
+  return String(new Date().getFullYear())
 }
 function aggregateBySite(rows) {
   const map = new Map();
@@ -758,18 +790,6 @@ function aggregateBySite(rows) {
     map.set(r.site, (map.get(r.site) || 0) + Number(r.uploaded || 0));
   }
   return Array.from(map, ([label, value]) => ({ label, value }))
-}
-async function loadMonthPie() {
-  monthPieLoading.value = true;
-  try {
-    const r = await props.api.get(`${base.value}/records?period=month&value=${pieMonth.value}`);
-    const rec = unwrap(r) || {};
-    monthPie.value = aggregateBySite(rec.data || []);
-  } catch (e) {
-    monthPie.value = [];
-  } finally {
-    monthPieLoading.value = false;
-  }
 }
 async function loadDayPie() {
   dayPieLoading.value = true;
@@ -783,132 +803,135 @@ async function loadDayPie() {
     dayPieLoading.value = false;
   }
 }
-
-// ---------- 折线图（自适应容器宽度，避免只占左半屏）----------
-const trendW = ref(640);
-const trendWrap = ref(null);
-let trendRO = null;
-function observeTrendWidth() {
-  if (!trendWrap.value || typeof ResizeObserver === 'undefined') return
-  trendRO = new ResizeObserver((entries) => {
-    const w = entries[0]?.contentRect?.width;
-    if (w > 0) trendW.value = Math.max(320, Math.floor(w));
-  });
-  trendRO.observe(trendWrap.value);
-}
-const maxTrendBytes = computed(() => {
-  let m = 0;
-  for (const p of trend.value) m = Math.max(m, Number(p.uploaded || 0), Number(p.downloaded || 0));
-  return m || 1
-});
-function linePoints(field) {
-  const n = trend.value.length;
-  if (n === 0) return ''
-  const plotW = trendW.value - linePadL - 10;
-  const plotH = lineH - linePadB - 10;
-  return trend.value
-    .map((p, i) => {
-      const x = linePadL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
-      const y = 10 + plotH - (Number(p[field] || 0) / maxTrendBytes.value) * plotH;
-      return `${x.toFixed(1)},${y.toFixed(1)}`
-    }).join(' ')
-}
-const lineXLabels = computed(() => {
-  const n = trend.value.length;
-  if (n === 0) return []
-  const plotW = trendW.value - linePadL - 10;
-  const step = Math.max(1, Math.ceil(n / 8));
-  const out = [];
-  for (let i = 0; i < n; i += step) {
-    const x = linePadL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
-    out.push({ x: x.toFixed(1), label: (trend.value[i].label || '').slice(-5) });
+async function loadMonthPie() {
+  monthPieLoading.value = true;
+  try {
+    const r = await props.api.get(`${base.value}/records?period=month&value=${pieMonth.value}`);
+    const rec = unwrap(r) || {};
+    monthPie.value = aggregateBySite(rec.data || []);
+  } catch (e) {
+    monthPie.value = [];
+  } finally {
+    monthPieLoading.value = false;
   }
-  return out
-});
+}
+async function loadYearPie() {
+  yearPieLoading.value = true;
+  try {
+    const v = pieYear.value || defaultYear();
+    const r = await props.api.get(`${base.value}/records?period=year&value=${v}`);
+    const rec = unwrap(r) || {};
+    yearPie.value = aggregateBySite(rec.data || []);
+  } catch (e) {
+    yearPie.value = [];
+  } finally {
+    yearPieLoading.value = false;
+  }
+}
+// 历史总计：period=all（后端不加时间过滤），只取一次，无日期选择器
+async function loadAllPie() {
+  allPieLoading.value = true;
+  try {
+    const r = await props.api.get(`${base.value}/records?period=all`);
+    const rec = unwrap(r) || {};
+    allPie.value = aggregateBySite(rec.data || []);
+  } catch (e) {
+    allPie.value = [];
+  } finally {
+    allPieLoading.value = false;
+  }
+}
+
+// ---------- 明细数据：窄屏改用卡片列表，避免 4 列表格挤爆 ----------
+const recordRows = computed(() => (records.value || []).slice(0, 15));
 
 return (_ctx, _cache) => {
-  const _component_VSpacer = _resolveComponent("VSpacer");
-  const _component_VSelect = _resolveComponent("VSelect");
   const _component_VBtn = _resolveComponent("VBtn");
-  const _component_VToolbar = _resolveComponent("VToolbar");
+  const _component_VSelect = _resolveComponent("VSelect");
   const _component_VDivider = _resolveComponent("VDivider");
   const _component_VAlert = _resolveComponent("VAlert");
   const _component_VCard = _resolveComponent("VCard");
   const _component_VDataTable = _resolveComponent("VDataTable");
 
-  return (_openBlock(), _createElementBlock("div", _hoisted_1, [
-    _createVNode(_component_VToolbar, {
-      density: "comfortable",
-      color: "transparent"
-    }, {
-      default: _withCtx(() => [
-        _cache[7] || (_cache[7] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计", -1)),
-        _createVNode(_component_VSpacer),
-        _createVNode(_component_VSelect, {
-          modelValue: period.value,
-          "onUpdate:modelValue": _cache[0] || (_cache[0] = $event => ((period).value = $event)),
-          items: [
-          { title: '按日', value: 'day' },
-          { title: '按月', value: 'month' },
-          { title: '按年', value: 'year' },
-        ],
-          density: "compact",
-          "hide-details": "",
-          style: {"max-width":"110px"},
-          variant: "outlined"
-        }, null, 8, ["modelValue"]),
-        _createElementVNode("div", _hoisted_2, [
-          _createVNode(CalendarPanel, {
-            modelValue: value.value,
-            "onUpdate:modelValue": _cache[1] || (_cache[1] = $event => ((value).value = $event)),
-            mode: period.value,
-            onClose: load
-          }, null, 8, ["modelValue", "mode"])
-        ]),
-        _createVNode(_component_VBtn, {
-          icon: "mdi-refresh",
-          variant: "text",
-          loading: loading.value,
-          class: "ms-2",
-          onClick: load
-        }, null, 8, ["loading"]),
-        _createVNode(_component_VBtn, {
-          color: "primary",
-          variant: "tonal",
-          density: "comfortable",
-          loading: collectBusy.value,
-          class: "ms-2",
-          onClick: doCollect
-        }, {
-          default: _withCtx(() => [...(_cache[5] || (_cache[5] = [
-            _createTextVNode("立即采集", -1)
-          ]))]),
-          _: 1
-        }, 8, ["loading"]),
-        _createVNode(_component_VBtn, {
-          color: "warning",
-          variant: "tonal",
-          density: "comfortable",
-          loading: resetBusy.value,
-          class: "ms-2",
-          onClick: doReset
-        }, {
-          default: _withCtx(() => [...(_cache[6] || (_cache[6] = [
-            _createTextVNode("解除限速", -1)
-          ]))]),
-          _: 1
-        }, 8, ["loading"]),
+  return (_openBlock(), _createElementBlock("div", {
+    ref_key: "rootEl",
+    ref: rootEl,
+    class: _normalizeClass(["dt-page", { 'dt-narrow': _unref(narrow), 'dt-tiny': tiny.value }])
+  }, [
+    _createElementVNode("div", _hoisted_1, [
+      _createElementVNode("div", _hoisted_2, [
+        _cache[8] || (_cache[8] = _createElementVNode("div", { class: "dt-title" }, "下载器流量统计", -1)),
         _createVNode(_component_VBtn, {
           icon: "mdi-close",
           variant: "text",
-          onClick: _cache[2] || (_cache[2] = $event => (emit('close')))
-        })
-      ]),
-      _: 1
-    }),
+          class: "dt-close",
+          "aria-label": "关闭",
+          onClick: _cache[0] || (_cache[0] = $event => (emit('close')))
+        }),
+        _createElementVNode("div", _hoisted_3, [
+          _createVNode(_component_VSelect, {
+            modelValue: period.value,
+            "onUpdate:modelValue": _cache[1] || (_cache[1] = $event => ((period).value = $event)),
+            items: [
+              { title: '按日', value: 'day' },
+              { title: '按月', value: 'month' },
+              { title: '按年', value: 'year' },
+            ],
+            density: "compact",
+            "hide-details": "",
+            class: "dt-period",
+            variant: "outlined"
+          }, null, 8, ["modelValue"]),
+          _createElementVNode("div", _hoisted_4, [
+            _createVNode(CalendarPanel, {
+              modelValue: value.value,
+              "onUpdate:modelValue": _cache[2] || (_cache[2] = $event => ((value).value = $event)),
+              mode: period.value,
+              onClose: load
+            }, null, 8, ["modelValue", "mode"])
+          ]),
+          _createVNode(_component_VBtn, {
+            icon: "mdi-refresh",
+            variant: "text",
+            loading: loading.value,
+            class: "dt-refresh",
+            "aria-label": "刷新",
+            onClick: load
+          }, null, 8, ["loading"]),
+          _createElementVNode("div", _hoisted_5, [
+            _createVNode(_component_VBtn, {
+              color: "primary",
+              variant: "tonal",
+              density: "comfortable",
+              loading: collectBusy.value,
+              class: "dt-action",
+              onClick: doCollect
+            }, {
+              default: _withCtx(() => [...(_cache[6] || (_cache[6] = [
+                _createTextVNode("立即采集", -1)
+              ]))]),
+              _: 1
+            }, 8, ["loading"]),
+            _createVNode(_component_VBtn, {
+              color: "warning",
+              variant: "tonal",
+              density: "comfortable",
+              loading: resetBusy.value,
+              class: "dt-action",
+              onClick: doReset
+            }, {
+              default: _withCtx(() => [...(_cache[7] || (_cache[7] = [
+                _createTextVNode("解除限速", -1)
+              ]))]),
+              _: 1
+            }, 8, ["loading"])
+          ])
+        ])
+      ])
+    ]),
     _createVNode(_component_VDivider),
     (actionMsg.value)
-      ? (_openBlock(), _createElementBlock("div", _hoisted_3, [
+      ? (_openBlock(), _createElementBlock("div", _hoisted_6, [
           _createVNode(_component_VAlert, {
             density: "compact",
             variant: "tonal",
@@ -922,17 +945,17 @@ return (_ctx, _cache) => {
         ]))
       : _createCommentVNode("", true),
     (error.value)
-      ? (_openBlock(), _createElementBlock("div", _hoisted_4, _toDisplayString(error.value), 1))
+      ? (_openBlock(), _createElementBlock("div", _hoisted_7, _toDisplayString(error.value), 1))
       : _createCommentVNode("", true),
-    _createElementVNode("div", _hoisted_5, [
+    _createElementVNode("div", _hoisted_8, [
       _createVNode(_component_VCard, {
         variant: "tonal",
         color: "green",
         class: "dt-card"
       }, {
         default: _withCtx(() => [
-          _cache[8] || (_cache[8] = _createElementVNode("div", { class: "text-caption" }, "上传流量", -1)),
-          _createElementVNode("div", _hoisted_6, _toDisplayString(fmtBytes(totalUp.value)), 1)
+          _cache[9] || (_cache[9] = _createElementVNode("div", { class: "dt-kpi-label" }, "上传流量", -1)),
+          _createElementVNode("div", _hoisted_9, _toDisplayString(fmtBytes(totalUp.value)), 1)
         ]),
         _: 1
       }),
@@ -942,8 +965,8 @@ return (_ctx, _cache) => {
         class: "dt-card"
       }, {
         default: _withCtx(() => [
-          _cache[9] || (_cache[9] = _createElementVNode("div", { class: "text-caption" }, "下载流量", -1)),
-          _createElementVNode("div", _hoisted_7, _toDisplayString(fmtBytes(totalDown.value)), 1)
+          _cache[10] || (_cache[10] = _createElementVNode("div", { class: "dt-kpi-label" }, "下载流量", -1)),
+          _createElementVNode("div", _hoisted_10, _toDisplayString(fmtBytes(totalDown.value)), 1)
         ]),
         _: 1
       }),
@@ -952,175 +975,178 @@ return (_ctx, _cache) => {
         class: "dt-card"
       }, {
         default: _withCtx(() => [
-          _cache[10] || (_cache[10] = _createElementVNode("div", { class: "text-caption" }, "分享率", -1)),
-          _createElementVNode("div", _hoisted_8, _toDisplayString(totalDown.value > 0 ? (totalUp.value / totalDown.value).toFixed(2) : '—'), 1)
+          _cache[11] || (_cache[11] = _createElementVNode("div", { class: "dt-kpi-label" }, "分享率", -1)),
+          _createElementVNode("div", _hoisted_11, _toDisplayString(totalDown.value > 0 ? (totalUp.value / totalDown.value).toFixed(2) : '—'), 1)
         ]),
         _: 1
       })
     ]),
-    _createVNode(_component_VCard, {
-      class: "dt-section",
-      title: "上传流量分布（按月 / 按日）"
-    }, {
-      text: _withCtx(() => [
-        _createElementVNode("div", _hoisted_9, [
-          _createVNode(_component_VCard, {
-            variant: "tonal",
-            class: "dt-pie-card"
-          }, {
-            default: _withCtx(() => [
-              _createElementVNode("div", _hoisted_10, [
-                _cache[11] || (_cache[11] = _createElementVNode("span", { class: "dt-pie-title" }, "本月上传", -1)),
-                _createVNode(CalendarPanel, {
-                  modelValue: pieMonth.value,
-                  "onUpdate:modelValue": _cache[3] || (_cache[3] = $event => ((pieMonth).value = $event)),
-                  mode: "month",
-                  onClose: loadMonthPie
-                }, null, 8, ["modelValue"])
+    _createVNode(_component_VCard, { class: "dt-section" }, {
+      default: _withCtx(() => [
+        _cache[16] || (_cache[16] = _createElementVNode("div", { class: "dt-section-head" }, [
+          _createElementVNode("span", { class: "dt-section-title" }, "上传流量分布（今日 / 本月 / 今年 / 历史总计）")
+        ], -1)),
+        _createElementVNode("div", _hoisted_12, [
+          _createElementVNode("div", {
+            class: _normalizeClass(["dt-pies", { 'dt-pies-roomy': roomy.value }])
+          }, [
+            _createVNode(_component_VCard, {
+              variant: "tonal",
+              class: "dt-pie-card"
+            }, {
+              default: _withCtx(() => [
+                _createElementVNode("div", _hoisted_13, [
+                  _cache[12] || (_cache[12] = _createElementVNode("span", { class: "dt-pie-title" }, "今日上传", -1)),
+                  _createElementVNode("div", _hoisted_14, [
+                    _createVNode(CalendarPanel, {
+                      modelValue: pieDay.value,
+                      "onUpdate:modelValue": _cache[3] || (_cache[3] = $event => ((pieDay).value = $event)),
+                      mode: "day",
+                      onClose: loadDayPie
+                    }, null, 8, ["modelValue"])
+                  ])
+                ]),
+                _createVNode(PieChart, {
+                  items: dayPie.value,
+                  subtitle: pieDay.value,
+                  loading: dayPieLoading.value,
+                  narrow: _unref(narrow)
+                }, null, 8, ["items", "subtitle", "loading", "narrow"])
               ]),
-              _createVNode(PieChart, {
-                items: monthPie.value,
-                subtitle: pieMonth.value,
-                loading: monthPieLoading.value
-              }, null, 8, ["items", "subtitle", "loading"])
-            ]),
-            _: 1
-          }),
-          _createVNode(_component_VCard, {
-            variant: "tonal",
-            class: "dt-pie-card"
-          }, {
-            default: _withCtx(() => [
-              _createElementVNode("div", _hoisted_11, [
-                _cache[12] || (_cache[12] = _createElementVNode("span", { class: "dt-pie-title" }, "今日上传", -1)),
-                _createVNode(CalendarPanel, {
-                  modelValue: pieDay.value,
-                  "onUpdate:modelValue": _cache[4] || (_cache[4] = $event => ((pieDay).value = $event)),
-                  mode: "day",
-                  onClose: loadDayPie
-                }, null, 8, ["modelValue"])
+              _: 1
+            }),
+            _createVNode(_component_VCard, {
+              variant: "tonal",
+              class: "dt-pie-card"
+            }, {
+              default: _withCtx(() => [
+                _createElementVNode("div", _hoisted_15, [
+                  _cache[13] || (_cache[13] = _createElementVNode("span", { class: "dt-pie-title" }, "本月上传", -1)),
+                  _createElementVNode("div", _hoisted_16, [
+                    _createVNode(CalendarPanel, {
+                      modelValue: pieMonth.value,
+                      "onUpdate:modelValue": _cache[4] || (_cache[4] = $event => ((pieMonth).value = $event)),
+                      mode: "month",
+                      onClose: loadMonthPie
+                    }, null, 8, ["modelValue"])
+                  ])
+                ]),
+                _createVNode(PieChart, {
+                  items: monthPie.value,
+                  subtitle: pieMonth.value,
+                  loading: monthPieLoading.value,
+                  narrow: _unref(narrow)
+                }, null, 8, ["items", "subtitle", "loading", "narrow"])
               ]),
-              _createVNode(PieChart, {
-                items: dayPie.value,
-                subtitle: pieDay.value,
-                loading: dayPieLoading.value
-              }, null, 8, ["items", "subtitle", "loading"])
-            ]),
-            _: 1
-          })
+              _: 1
+            }),
+            _createVNode(_component_VCard, {
+              variant: "tonal",
+              class: "dt-pie-card"
+            }, {
+              default: _withCtx(() => [
+                _createElementVNode("div", _hoisted_17, [
+                  _cache[14] || (_cache[14] = _createElementVNode("span", { class: "dt-pie-title" }, "今年上传", -1)),
+                  _createElementVNode("div", _hoisted_18, [
+                    _createVNode(CalendarPanel, {
+                      modelValue: pieYear.value,
+                      "onUpdate:modelValue": _cache[5] || (_cache[5] = $event => ((pieYear).value = $event)),
+                      mode: "year",
+                      onClose: loadYearPie
+                    }, null, 8, ["modelValue"])
+                  ])
+                ]),
+                _createVNode(PieChart, {
+                  items: yearPie.value,
+                  subtitle: pieYear.value,
+                  loading: yearPieLoading.value,
+                  narrow: _unref(narrow)
+                }, null, 8, ["items", "subtitle", "loading", "narrow"])
+              ]),
+              _: 1
+            }),
+            _createVNode(_component_VCard, {
+              variant: "tonal",
+              class: "dt-pie-card"
+            }, {
+              default: _withCtx(() => [
+                _cache[15] || (_cache[15] = _createElementVNode("div", { class: "dt-pie-head" }, [
+                  _createElementVNode("span", { class: "dt-pie-title" }, "历史总计上传")
+                ], -1)),
+                _createVNode(PieChart, {
+                  items: allPie.value,
+                  subtitle: "全部历史",
+                  loading: allPieLoading.value,
+                  narrow: _unref(narrow)
+                }, null, 8, ["items", "loading", "narrow"])
+              ]),
+              _: 1
+            })
+          ], 2)
         ])
       ]),
       _: 1
     }),
-    _createVNode(_component_VCard, {
-      class: "dt-section",
-      title: `时间趋势（${period.value === 'year' ? '逐月' : '逐日'}）`
-    }, {
-      text: _withCtx(() => [
-        _createElementVNode("div", {
-          ref_key: "trendWrap",
-          ref: trendWrap,
-          class: "dt-line-wrap"
-        }, [
-          (trend.value.length === 0)
-            ? (_openBlock(), _createElementBlock("div", _hoisted_12, "暂无数据"))
-            : (_openBlock(), _createElementBlock("svg", {
-                key: 1,
-                width: trendW.value,
-                height: lineH,
-                class: "dt-line"
-              }, [
-                _createElementVNode("line", {
-                  x1: linePadL,
-                  y1: 10,
-                  x2: trendW.value - 10,
-                  y2: 10,
-                  stroke: "#eee"
-                }, null, 8, _hoisted_14),
-                _createElementVNode("line", {
-                  x1: linePadL,
-                  y1: lineH - linePadB,
-                  x2: trendW.value - 10,
-                  y2: lineH - linePadB,
-                  stroke: "#ccc"
-                }, null, 8, _hoisted_15),
-                _createElementVNode("text", _hoisted_16, _toDisplayString(fmtBytes(maxTrendBytes.value)), 1),
-                _createElementVNode("text", {
-                  x: 4,
-                  y: lineH - linePadB,
-                  class: "dt-axis"
-                }, "0", 8, _hoisted_17),
-                _createElementVNode("polyline", {
-                  points: linePoints('uploaded'),
-                  fill: "none",
-                  stroke: "#4caf50",
-                  "stroke-width": "2"
-                }, null, 8, _hoisted_18),
-                _createElementVNode("polyline", {
-                  points: linePoints('downloaded'),
-                  fill: "none",
-                  stroke: "#2196f3",
-                  "stroke-width": "2"
-                }, null, 8, _hoisted_19),
-                (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(lineXLabels.value, (t, i) => {
-                  return (_openBlock(), _createElementBlock("text", {
+    _createVNode(_component_VCard, { class: "dt-section" }, {
+      default: _withCtx(() => [
+        _cache[17] || (_cache[17] = _createElementVNode("div", { class: "dt-section-head" }, [
+          _createElementVNode("span", { class: "dt-section-title" }, "明细数据")
+        ], -1)),
+        _createElementVNode("div", _hoisted_19, [
+          (_unref(narrow))
+            ? (_openBlock(), _createElementBlock("div", _hoisted_20, [
+                (!recordRows.value.length)
+                  ? (_openBlock(), _createElementBlock("div", _hoisted_21, "暂无数据"))
+                  : _createCommentVNode("", true),
+                (_openBlock(true), _createElementBlock(_Fragment, null, _renderList(recordRows.value, (r, i) => {
+                  return (_openBlock(), _createElementBlock("div", {
                     key: i,
-                    x: t.x,
-                    y: lineH - linePadB + 16,
-                    class: "dt-axis",
-                    "text-anchor": "middle"
-                  }, _toDisplayString(t.label), 9, _hoisted_20))
-                }), 128))
-              ], 8, _hoisted_13))
-        ], 512),
-        _cache[13] || (_cache[13] = _createElementVNode("div", { class: "dt-legend" }, [
-          _createElementVNode("span", {
-            class: "dt-dot",
-            style: {"background":"#4caf50"}
-          }),
-          _createTextVNode(" 上传 "),
-          _createElementVNode("span", {
-            class: "dt-dot",
-            style: {"background":"#2196f3"}
-          }),
-          _createTextVNode(" 下载 ")
-        ], -1))
-      ]),
-      _: 1
-    }, 8, ["title"]),
-    _createVNode(_component_VCard, {
-      class: "dt-section",
-      title: "明细数据"
-    }, {
-      text: _withCtx(() => [
-        _createVNode(_component_VDataTable, {
-          items: records.value,
-          "items-per-page": 15,
-          density: "compact",
-          "hide-default-footer": "",
-          headers: [
+                    class: "dt-rec"
+                  }, [
+                    _createElementVNode("div", _hoisted_22, [
+                      _createElementVNode("span", _hoisted_23, _toDisplayString(r.site), 1),
+                      _createElementVNode("span", _hoisted_24, _toDisplayString(r.downloader), 1)
+                    ]),
+                    _createElementVNode("div", _hoisted_25, [
+                      _createElementVNode("span", _hoisted_26, "↑ " + _toDisplayString(fmtBytes(r.uploaded)), 1),
+                      _createElementVNode("span", _hoisted_27, "↓ " + _toDisplayString(fmtBytes(r.downloaded)), 1)
+                    ])
+                  ]))
+                }), 128)),
+                (records.value.length > recordRows.value.length)
+                  ? (_openBlock(), _createElementBlock("div", _hoisted_28, " 共 " + _toDisplayString(records.value.length) + " 条，此处显示前 " + _toDisplayString(recordRows.value.length) + " 条 ", 1))
+                  : _createCommentVNode("", true)
+              ]))
+            : (_openBlock(), _createBlock(_component_VDataTable, {
+                key: 1,
+                items: records.value,
+                "items-per-page": 15,
+                density: "compact",
+                "hide-default-footer": "",
+                headers: [
             { title: '站点', key: 'site' },
             { title: '下载器', key: 'downloader' },
             { title: '上传', key: 'uploaded', align: 'end' },
             { title: '下载', key: 'downloaded', align: 'end' },
           ]
-        }, {
-          "item.uploaded": _withCtx(({ item }) => [
-            _createElementVNode("span", _hoisted_21, _toDisplayString(fmtBytes(item.uploaded)), 1)
-          ]),
-          "item.downloaded": _withCtx(({ item }) => [
-            _createElementVNode("span", _hoisted_22, _toDisplayString(fmtBytes(item.downloaded)), 1)
-          ]),
-          _: 1
-        }, 8, ["items"])
+              }, {
+                "item.uploaded": _withCtx(({ item }) => [
+                  _createElementVNode("span", _hoisted_29, _toDisplayString(fmtBytes(item.uploaded)), 1)
+                ]),
+                "item.downloaded": _withCtx(({ item }) => [
+                  _createElementVNode("span", _hoisted_30, _toDisplayString(fmtBytes(item.downloaded)), 1)
+                ]),
+                _: 1
+              }, 8, ["items"]))
+        ])
       ]),
       _: 1
     })
-  ]))
+  ], 2))
 }
 }
 
 };
-const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-466a44cb"]]);
+const Page = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-72994ad6"]]);
 
 export { Page as default };

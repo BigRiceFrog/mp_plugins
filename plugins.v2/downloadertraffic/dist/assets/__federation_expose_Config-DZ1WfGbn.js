@@ -1,21 +1,21 @@
 import { importShared } from './__federation_fn_import-JrT3xvdd.js';
+import { u as useNarrow } from './useNarrow-DoB6roQs.js';
+import { _ as _export_sfc } from './_plugin-vue_export-helper-pcqpp-6-.js';
 
-const {createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,withCtx:_withCtx,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,withKeys:_withKeys} = await importShared('vue');
+const {unref:_unref,createElementVNode:_createElementVNode,resolveComponent:_resolveComponent,createVNode:_createVNode,toDisplayString:_toDisplayString,createTextVNode:_createTextVNode,withCtx:_withCtx,openBlock:_openBlock,createElementBlock:_createElementBlock,createCommentVNode:_createCommentVNode,withKeys:_withKeys,normalizeClass:_normalizeClass} = await importShared('vue');
 
 
-const _hoisted_1 = { class: "dt-config" };
-const _hoisted_2 = {
-  class: "pa-4",
-  style: {"max-width":"560px"}
-};
-const _hoisted_3 = {
+const _hoisted_1 = { class: "dt-header" };
+const _hoisted_2 = { class: "dt-header-row" };
+const _hoisted_3 = { class: "dt-header-actions" };
+const _hoisted_4 = { class: "dt-body" };
+const _hoisted_5 = {
   key: 0,
   class: "mb-3"
 };
-const _hoisted_4 = { class: "d-flex ga-2 mb-3 flex-wrap" };
+const _hoisted_6 = { class: "dt-actions" };
 
 const {ref,computed,onMounted} = await importShared('vue');
-
 
 
 const _sfc_main = {
@@ -39,6 +39,9 @@ const _sfc_main = {
 
 const props = __props;
 const emit = __emit;
+
+// 窄屏（手机 / 桌面窄弹窗）判定
+const { target: rootEl, narrow } = useNarrow(640);
 
 // 后端 API 路由以插件类名 DownloaderTraffic 为前缀注册
 const pid = computed(() => {
@@ -208,9 +211,7 @@ function save() {
 }
 
 return (_ctx, _cache) => {
-  const _component_VSpacer = _resolveComponent("VSpacer");
   const _component_VBtn = _resolveComponent("VBtn");
-  const _component_VToolbar = _resolveComponent("VToolbar");
   const _component_VDivider = _resolveComponent("VDivider");
   const _component_VAlert = _resolveComponent("VAlert");
   const _component_VSwitch = _resolveComponent("VSwitch");
@@ -219,36 +220,40 @@ return (_ctx, _cache) => {
   const _component_VTextarea = _resolveComponent("VTextarea");
   const _component_VCardTitle = _resolveComponent("VCardTitle");
   const _component_VCardText = _resolveComponent("VCardText");
+  const _component_VSpacer = _resolveComponent("VSpacer");
   const _component_VCardActions = _resolveComponent("VCardActions");
   const _component_VCard = _resolveComponent("VCard");
   const _component_VDialog = _resolveComponent("VDialog");
 
-  return (_openBlock(), _createElementBlock("div", _hoisted_1, [
-    _createVNode(_component_VToolbar, {
-      density: "comfortable",
-      color: "transparent"
-    }, {
-      default: _withCtx(() => [
-        _cache[15] || (_cache[15] = _createElementVNode("div", { class: "text-h6 ms-3" }, "下载器流量统计 · 配置", -1)),
-        _createVNode(_component_VSpacer),
-        _createVNode(_component_VBtn, {
-          icon: "mdi-content-save",
-          variant: "text",
-          color: "primary",
-          onClick: save
-        }),
-        _createVNode(_component_VBtn, {
-          icon: "mdi-close",
-          variant: "text",
-          onClick: _cache[0] || (_cache[0] = $event => (emit('close')))
-        })
-      ]),
-      _: 1
-    }),
+  return (_openBlock(), _createElementBlock("div", {
+    ref_key: "rootEl",
+    ref: rootEl,
+    class: _normalizeClass(["dt-config", { 'dt-narrow': _unref(narrow) }])
+  }, [
+    _createElementVNode("div", _hoisted_1, [
+      _createElementVNode("div", _hoisted_2, [
+        _cache[15] || (_cache[15] = _createElementVNode("div", { class: "dt-title" }, "下载器流量统计 · 配置", -1)),
+        _createElementVNode("div", _hoisted_3, [
+          _createVNode(_component_VBtn, {
+            icon: "mdi-content-save",
+            variant: "text",
+            color: "primary",
+            "aria-label": "保存",
+            onClick: save
+          }),
+          _createVNode(_component_VBtn, {
+            icon: "mdi-close",
+            variant: "text",
+            "aria-label": "关闭",
+            onClick: _cache[0] || (_cache[0] = $event => (emit('close')))
+          })
+        ])
+      ])
+    ]),
     _createVNode(_component_VDivider),
-    _createElementVNode("div", _hoisted_2, [
+    _createElementVNode("div", _hoisted_4, [
       (actionMsg.value)
-        ? (_openBlock(), _createElementBlock("div", _hoisted_3, [
+        ? (_openBlock(), _createElementBlock("div", _hoisted_5, [
             _createVNode(_component_VAlert, {
               density: "compact",
               variant: "tonal",
@@ -261,10 +266,11 @@ return (_ctx, _cache) => {
             }, 8, ["type"])
           ]))
         : _createCommentVNode("", true),
-      _createElementVNode("div", _hoisted_4, [
+      _createElementVNode("div", _hoisted_6, [
         _createVNode(_component_VBtn, {
           color: "primary",
           variant: "tonal",
+          class: "dt-action-btn",
           loading: collectBusy.value,
           onClick: doCollect
         }, {
@@ -276,6 +282,7 @@ return (_ctx, _cache) => {
         _createVNode(_component_VBtn, {
           color: "error",
           variant: "tonal",
+          class: "dt-action-btn",
           loading: limitBusy.value,
           onClick: doTestLimit
         }, {
@@ -287,6 +294,7 @@ return (_ctx, _cache) => {
         _createVNode(_component_VBtn, {
           color: "success",
           variant: "tonal",
+          class: "dt-action-btn",
           loading: resetBusy.value,
           onClick: doReset
         }, {
@@ -299,6 +307,7 @@ return (_ctx, _cache) => {
           color: "error",
           variant: "text",
           density: "comfortable",
+          class: "dt-action-btn",
           onClick: openClearDialog
         }, {
           default: _withCtx(() => [...(_cache[19] || (_cache[19] = [
@@ -435,7 +444,7 @@ return (_ctx, _cache) => {
     _createVNode(_component_VDialog, {
       modelValue: clearDialog.value,
       "onUpdate:modelValue": _cache[14] || (_cache[14] = $event => ((clearDialog).value = $event)),
-      "max-width": "440",
+      "max-width": _unref(narrow) ? 'calc(100vw - 32px)' : 440,
       persistent: ""
     }, {
       default: _withCtx(() => [
@@ -507,11 +516,12 @@ return (_ctx, _cache) => {
         })
       ]),
       _: 1
-    }, 8, ["modelValue"])
-  ]))
+    }, 8, ["modelValue", "max-width"])
+  ], 2))
 }
 }
 
 };
+const Config = /*#__PURE__*/_export_sfc(_sfc_main, [['__scopeId',"data-v-854e9fa5"]]);
 
-export { _sfc_main as default };
+export { Config as default };
